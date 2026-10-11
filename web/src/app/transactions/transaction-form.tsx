@@ -47,14 +47,14 @@ export function TransactionForm({ today, accounts, categories }: Props) {
   );
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4 rounded-md border border-gray-200 p-4" noValidate>
+    <form onSubmit={onSubmit} className="space-y-4 rounded-md border border-border p-4" noValidate>
       <fieldset className="flex gap-2">
         <legend className="sr-only">Direction</legend>
         {(["DEBIT", "CREDIT"] as const).map((d) => (
           <label
             key={d}
             className={`flex-1 cursor-pointer rounded-md border px-3 py-2 text-center text-sm font-medium ${
-              direction === d ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300"
+              direction === d ? "border-primary bg-primary text-primary-foreground" : "border-input"
             }`}
           >
             <input
@@ -78,7 +78,7 @@ export function TransactionForm({ today, accounts, categories }: Props) {
             autoComplete="off"
             placeholder="499.00"
             required
-            className="w-full rounded-md border border-gray-300 px-3 py-2"
+            className="w-full rounded-md border border-input px-3 py-2"
           />
         </Field>
         <Field label="Date" error={fieldError("txnDate")}>
@@ -89,7 +89,7 @@ export function TransactionForm({ today, accounts, categories }: Props) {
             max={today}
             min="2000-01-01"
             required
-            className="w-full rounded-md border border-gray-300 px-3 py-2"
+            className="w-full rounded-md border border-input px-3 py-2"
           />
         </Field>
       </div>
@@ -100,13 +100,13 @@ export function TransactionForm({ today, accounts, categories }: Props) {
           maxLength={120}
           placeholder="e.g. Vegetables at local market"
           required
-          className="w-full rounded-md border border-gray-300 px-3 py-2"
+          className="w-full rounded-md border border-input px-3 py-2"
         />
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Category" error={fieldError("categoryId")}>
-          <select name="categoryId" defaultValue="" className="w-full rounded-md border border-gray-300 px-3 py-2">
+          <select name="categoryId" defaultValue="" className="w-full rounded-md border border-input px-3 py-2">
             <option value="">Uncategorised</option>
             {(["EXPENSE", "INCOME", "TRANSFER"] as const).map((kind) => {
               const options = visibleCategories.filter((c) => c.kind === kind);
@@ -124,7 +124,7 @@ export function TransactionForm({ today, accounts, categories }: Props) {
           </select>
         </Field>
         <Field label="Account" error={fieldError("accountId")}>
-          <select name="accountId" className="w-full rounded-md border border-gray-300 px-3 py-2">
+          <select name="accountId" className="w-full rounded-md border border-input px-3 py-2">
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.label}
@@ -135,19 +135,19 @@ export function TransactionForm({ today, accounts, categories }: Props) {
       </div>
 
       <Field label="Notes (optional)" error={fieldError("notes")}>
-        <textarea name="notes" maxLength={500} rows={2} className="w-full rounded-md border border-gray-300 px-3 py-2" />
+        <textarea name="notes" maxLength={500} rows={2} className="w-full rounded-md border border-input px-3 py-2" />
       </Field>
 
       <div className="flex items-center gap-4">
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+          className="rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
         >
           {pending ? "Saving…" : "Add transaction"}
         </button>
         {state.status !== "idle" && (
-          <p role="status" className={`text-sm ${state.status === "error" ? "text-red-700" : "text-green-700"}`}>
+          <p role="status" className={`text-sm ${state.status === "error" ? "text-danger" : "text-success"}`}>
             {state.message}
           </p>
         )}
@@ -159,9 +159,9 @@ export function TransactionForm({ today, accounts, categories }: Props) {
 function Field({ label, error, children }: { label: string; error?: string; children: React.ReactNode }) {
   return (
     <label className="block space-y-1">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span className="text-sm font-medium text-foreground">{label}</span>
       {children}
-      {error && <span className="block text-sm text-red-700">{error}</span>}
+      {error && <span className="block text-sm text-danger">{error}</span>}
     </label>
   );
 }

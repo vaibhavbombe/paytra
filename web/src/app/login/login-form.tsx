@@ -83,12 +83,12 @@ export function LoginForm() {
         type="button"
         onClick={google}
         disabled={busy}
-        className="w-full rounded-md border border-gray-300 px-4 py-2 font-medium hover:bg-gray-50 disabled:opacity-50"
+        className="w-full rounded-md border border-input px-4 py-2 font-medium hover:bg-surface-hover disabled:opacity-50"
       >
         Continue with Google
       </button>
 
-      <div className="text-center text-sm text-gray-500">or</div>
+      <div className="text-center text-sm text-muted">or</div>
 
       <form onSubmit={submit} className="space-y-3">
         <input
@@ -98,7 +98,7 @@ export function LoginForm() {
           placeholder="Email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2"
+          className="w-full rounded-md border border-input px-3 py-2"
         />
         <input
           type="password"
@@ -108,19 +108,19 @@ export function LoginForm() {
           placeholder="Password (min 8 characters)"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          className="w-full rounded-md border border-gray-300 px-3 py-2"
+          className="w-full rounded-md border border-input px-3 py-2"
         />
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded-md bg-gray-900 px-4 py-2 font-medium text-white hover:bg-gray-700 disabled:opacity-50"
+          className="w-full rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
         >
           {mode === "signin" ? "Sign in" : "Create account"}
         </button>
       </form>
 
       {message && (
-        <p role="status" className="text-sm text-gray-700">
+        <p role="status" className="text-sm text-foreground">
           {message}
         </p>
       )}
@@ -131,7 +131,7 @@ export function LoginForm() {
           setMode(mode === "signin" ? "signup" : "signin");
           setMessage(null);
         }}
-        className="w-full text-sm text-gray-600 underline"
+        className="w-full text-sm text-muted underline"
       >
         {mode === "signin" ? "New here? Create an account" : "Have an account? Sign in"}
       </button>

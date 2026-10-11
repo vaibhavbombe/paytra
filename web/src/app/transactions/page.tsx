@@ -15,21 +15,21 @@ export default function TransactionsPage() {
     <main className="mx-auto w-full max-w-3xl space-y-8 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Transactions</h1>
-        <Link href="/dashboard" className="text-sm text-gray-600 underline">
+        <Link href="/dashboard" className="text-sm text-muted underline">
           Dashboard
         </Link>
       </div>
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Add a transaction</h2>
-        <Suspense fallback={<p className="text-gray-500">Loading…</p>}>
+        <Suspense fallback={<p className="text-muted">Loading…</p>}>
           <AddTransaction />
         </Suspense>
       </section>
 
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Recent</h2>
-        <Suspense fallback={<p className="text-gray-500">Loading…</p>}>
+        <Suspense fallback={<p className="text-muted">Loading…</p>}>
           <RecentList />
         </Suspense>
       </section>
@@ -49,20 +49,20 @@ async function RecentList() {
   if (!rows) redirect("/login");
 
   if (!rows.length) {
-    return <p className="text-sm text-gray-500">No transactions yet. Add your first one above.</p>;
+    return <p className="text-sm text-muted">No transactions yet. Add your first one above.</p>;
   }
 
   return (
-    <ul className="divide-y divide-gray-200 rounded-md border border-gray-200">
+    <ul className="divide-y divide-border rounded-md border border-border">
       {rows.map((t) => (
         <li key={t.id} className="flex items-center justify-between gap-4 p-3">
           <div className="min-w-0">
             <p className="truncate font-medium">{t.description}</p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-muted">
               {t.date} · {t.category} · {t.account}
             </p>
           </div>
-          <p className={`shrink-0 font-mono ${t.direction === "DEBIT" ? "text-red-700" : "text-green-700"}`}>
+          <p className={`shrink-0 font-mono ${t.direction === "DEBIT" ? "text-debit" : "text-credit"}`}>
             {t.direction === "DEBIT" ? "−" : "+"}
             {t.amount}
           </p>
