@@ -1,0 +1,245 @@
+// PayTra database schema (Phase 1: Foundation)
+//
+// Conventions
+// - Money is stored as BigInt paise (1 INR = 100 paise). Never Float/Decimal.
+// - Amounts are always positive; the sign lives in `direction` (DEBIT/CREDIT),
+//   the same way a bank statement has separate Dr / Cr columns.
+// - Tables and columns are snake_case in Postgres (@@map / @map) so raw SQL
+//   for analytics reads naturally; Prisma code uses camelCase.
+// - IDs are UUIDv7 (time-ordered, so inserts stay index-friendly and IDs
+//   reveal nothing guessable like a sequence number).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum Direction {
+  DEBIT
+  CREDIT
+}
+
+enum AccountType {
+  SAVINGS
+  CURRENT
+  CREDIT_CARD
+  WALLET
+  CASH
+}
+
+// Where a transaction came from. One payment can later be seen by several
+// sources (e.g. EMAIL alert + STATEMENT); reconciliation (Phase 6) adds a
+// transaction_sources link table, and this field keeps the first source.
+enum TransactionSource {
+  MANUAL
+  CSV
+  PDF
+  AA
+  EMAIL
+  SMS
+}
+
+enum CategoryKind {
+  EXPENSE
+  INCOME
+  TRANSFER
+}
+
+enum BudgetPeriod {
+  WEEKLY
+  MONTHLY
+}
+
+enum ConsentPurpose {
+  AA_FETCH
+  GMAIL_READ
+  SMS_READ
+  STATEMENT_UPLOAD
+}
+
+enum ConsentStatus {
+  PENDING
+  ACTIVE
+  REVOKED
+  EXPIRED
+  REJECTED
+}
+
+// ───────────────────────────── Models ─────────────────────────────
+
+model User {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  // Firebase Authentication UID. We never store passwords; Firebase does auth,
+  // Postgres holds the app data.
+  firebaseUid String   @unique @map("firebase_uid")
+  email       String   @unique
+  displayName String?  @map("display_name")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  accounts     Account[]
+  transactions Transaction[]
+  categories   Category[]
+  budgets      Budget[]
+  consents     Consent[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model Account {
+  id              String      @id @default(uuid(7)) @db.Uuid
+  userId          String      @map("user_id") @db.Uuid
+  institutionName String      @map("institution_name") // e.g. "HDFC Bank"
+  nickname        String?
+  type            AccountType
+  // Only the last 4 digits are ever shown. Null for CASH.
+  last4           String?     @db.Char(4)
+  // Full account identifier, encrypted with a Cloud KMS-wrapped key (Phase 8).
+  accountNumberEnc Bytes?     @map("account_number_enc")
+  // Keyed HMAC of the full number so an imported statement can be matched to
+  // this account without decrypting anything.
+  accountNumberHash String?   @map("account_number_hash")
+  currency        String      @default("INR") @db.Char(3)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, accountNumberHash])
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Transaction {
+  id          String            @id @default(uuid(7)) @db.Uuid
+  userId      String            @map("user_id") @db.Uuid
+  accountId   String            @map("account_id") @db.Uuid
+  direction   Direction
+  // Always > 0 (CHECK constraint added in the migration SQL).
+  amountPaise BigInt            @map("amount_paise")
+  currency    String            @default("INR") @db.Char(3)
+  // Calendar date of the transaction as printed by the bank (IST).
+  // Date-only on purpose: statements have no time, and a timestamp would
+  // shift days across time zones and break daily/monthly totals.
+  txnDate     DateTime          @map("txn_date") @db.Date
+  // Exact time when known (email / SMS alerts, manual entry).
+  occurredAt  DateTime?         @map("occurred_at") @db.Timestamptz(3)
+  // Clean, display-safe text (merchant / payee).
+  description String
+  merchant    String?
+  // Bank reference: UPI RRN / UTR / cheque no. Strongest key for dedupe and
+  // reconciliation.
+  reference   String?
+  // Original bank narration, encrypted (it can contain names, VPAs, phone nos.).
+  narrationEnc Bytes?           @map("narration_enc")
+  notes       String?
+  categoryId  String?           @map("category_id") @db.Uuid
+  source      TransactionSource
+  // Idempotency key. Imports: hash(account + date + amount + direction +
+  // reference or normalised narration). Manual entry: a client-generated
+  // UUID, so a double-click or an offline retry never inserts twice.
+  fingerprint String
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account  Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@unique([accountId, fingerprint])
+  @@index([userId, txnDate(sort: Desc)])
+  @@index([userId, categoryId, txnDate])
+  @@index([accountId, reference])
+  @@map("transactions")
+}
+
+model Category {
+  id        String       @id @default(uuid(7)) @db.Uuid
+  // Null = built-in category shared by everyone (seeded); otherwise user-defined.
+  userId    String?      @map("user_id") @db.Uuid
+  name      String
+  kind      CategoryKind
+  icon      String?
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  budgets      Budget[]
+
+  @@unique([userId, name])
+  @@map("categories")
+}
+
+model Budget {
+  id          String       @id @default(uuid(7)) @db.Uuid
+  userId      String       @map("user_id") @db.Uuid
+  // Null = overall budget across all expense categories.
+  categoryId  String?      @map("category_id") @db.Uuid
+  period      BudgetPeriod
+  limitPaise  BigInt       @map("limit_paise")
+  // Alerts fire when spend crosses these percentages of the limit.
+  alertAtPercents Int[]    @default([80, 100]) @map("alert_at_percents")
+  active      Boolean      @default(true)
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@index([userId, active])
+  @@map("budgets")
+}
+
+model Consent {
+  id          String         @id @default(uuid(7)) @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  purpose     ConsentPurpose
+  status      ConsentStatus  @default(PENDING)
+  // Data may only be fetched for this window (AA "FIDataRange").
+  dataFrom    DateTime?      @map("data_from") @db.Date
+  dataTo      DateTime?      @map("data_to") @db.Date
+  // Provider handle, e.g. the Setu consent ID. Never a credential.
+  externalRef String?        @map("external_ref")
+  // What exactly was shown/approved (scopes, account links, frequency).
+  details     Json?
+  grantedAt   DateTime?      @map("granted_at") @db.Timestamptz(3)
+  expiresAt   DateTime?      @map("expires_at") @db.Timestamptz(3)
+  revokedAt   DateTime?      @map("revoked_at") @db.Timestamptz(3)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose, status])
+  @@map("consents")
+}
+
+// Append-only. Rows are never updated or deleted by the app (enforced with a
+// trigger in the migration SQL). When a user deletes their account, their
+// rows stay with user_id set to NULL so the "who did what, when" trail survives
+// without keeping personal data.
+model AuditLog {
+  id         BigInt   @id @default(autoincrement())
+  userId     String?  @map("user_id") @db.Uuid
+  action     String   // e.g. "transaction.create", "consent.revoke", "auth.login"
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  ip         String?
+  userAgent  String?  @map("user_agent")
+  metadata   Json?    // changed fields only; never secrets or raw narrations
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
