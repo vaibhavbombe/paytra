@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { ensureCashAccount } from "@/lib/accounts";
 import { writeAudit } from "@/lib/audit";
 import {
   SESSION_COOKIE,
@@ -70,6 +71,7 @@ export async function POST(request: Request) {
       update: { email: decoded.email! },
       select: { id: true },
     });
+    await ensureCashAccount(tx, user.id);
     await writeAudit(
       tx,
       {
