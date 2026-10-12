@@ -21,7 +21,7 @@ export default function ImportsPage() {
         </Link>
       </div>
       <p className="text-sm text-muted">
-        Download your statement as <strong>CSV</strong> from net banking and upload it here. UPI payments made with GPay,
+        Download your statement as <strong>CSV</strong> or <strong>PDF</strong> from net banking (or use the PDF your bank emails you) and upload it here. UPI payments made with GPay,
         PhonePe or Paytm appear in your bank statement, so they&apos;re captured this way. PayTra never asks for your
         bank password or UPI PIN.
       </p>

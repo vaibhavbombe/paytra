@@ -127,15 +127,22 @@ export type ParsedStatement =
 
 export const MAX_ROWS = 5000;
 
-const FOOTER_RE = /^(statement summary|opening balance|closing balance|summary|total|\*{3,}|-{3,}end)/i;
+export const FOOTER_RE = /^(statement summary|opening balance|closing balance|summary|total|\*{3,}|-{3,}end)/i;
 
 /**
  * Parse a statement for ONE account. `today` (IST) rejects future dates.
  * Pure function: no database access; the caller decides what's new.
  */
 export function parseStatement(text: string, accountId: string, today: string): ParsedStatement {
-  const table = parseCsv(text);
+  return parseStatementTable(parseCsv(text), accountId, today);
+}
 
+/**
+ * Same as parseStatement, for a table that's already split into cells
+ * (the PDF reader rebuilds one from text positions). CSV and PDF share every
+ * rule below, so the same transaction gets the same fingerprint from either.
+ */
+export function parseStatementTable(table: string[][], accountId: string, today: string): ParsedStatement {
   // The header is usually within the first lines; banks add preamble above it.
   let headerIndex = -1;
   let cols: ColumnMap | null = null;
