@@ -89,29 +89,31 @@ model User {
   budgets      Budget[]
   consents     Consent[]
   auditLogs    AuditLog[]
+  imports      ImportBatch[]
 
   @@map("users")
 }
 
 model Account {
-  id              String      @id @default(uuid(7)) @db.Uuid
-  userId          String      @map("user_id") @db.Uuid
-  institutionName String      @map("institution_name") // e.g. "HDFC Bank"
-  nickname        String?
-  type            AccountType
+  id                String      @id @default(uuid(7)) @db.Uuid
+  userId            String      @map("user_id") @db.Uuid
+  institutionName   String      @map("institution_name") // e.g. "HDFC Bank"
+  nickname          String?
+  type              AccountType
   // Only the last 4 digits are ever shown. Null for CASH.
-  last4           String?     @db.Char(4)
+  last4             String?     @db.Char(4)
   // Full account identifier, encrypted with a Cloud KMS-wrapped key (Phase 8).
-  accountNumberEnc Bytes?     @map("account_number_enc")
+  accountNumberEnc  Bytes?      @map("account_number_enc")
   // Keyed HMAC of the full number so an imported statement can be matched to
   // this account without decrypting anything.
-  accountNumberHash String?   @map("account_number_hash")
-  currency        String      @default("INR") @db.Char(3)
-  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  accountNumberHash String?     @map("account_number_hash")
+  currency          String      @default("INR") @db.Char(3)
+  createdAt         DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
+  imports      ImportBatch[]
 
   @@unique([userId, accountNumberHash])
   @@index([userId])
@@ -119,40 +121,41 @@ model Account {
 }
 
 model Transaction {
-  id          String            @id @default(uuid(7)) @db.Uuid
-  userId      String            @map("user_id") @db.Uuid
-  accountId   String            @map("account_id") @db.Uuid
-  direction   Direction
+  id           String            @id @default(uuid(7)) @db.Uuid
+  userId       String            @map("user_id") @db.Uuid
+  accountId    String            @map("account_id") @db.Uuid
+  direction    Direction
   // Always > 0 (CHECK constraint added in the migration SQL).
-  amountPaise BigInt            @map("amount_paise")
-  currency    String            @default("INR") @db.Char(3)
+  amountPaise  BigInt            @map("amount_paise")
+  currency     String            @default("INR") @db.Char(3)
   // Calendar date of the transaction as printed by the bank (IST).
   // Date-only on purpose: statements have no time, and a timestamp would
   // shift days across time zones and break daily/monthly totals.
-  txnDate     DateTime          @map("txn_date") @db.Date
+  txnDate      DateTime          @map("txn_date") @db.Date
   // Exact time when known (email / SMS alerts, manual entry).
-  occurredAt  DateTime?         @map("occurred_at") @db.Timestamptz(3)
+  occurredAt   DateTime?         @map("occurred_at") @db.Timestamptz(3)
   // Clean, display-safe text (merchant / payee).
-  description String
-  merchant    String?
+  description  String
+  merchant     String?
   // Bank reference: UPI RRN / UTR / cheque no. Strongest key for dedupe and
   // reconciliation.
-  reference   String?
+  reference    String?
   // Original bank narration, encrypted (it can contain names, VPAs, phone nos.).
-  narrationEnc Bytes?           @map("narration_enc")
-  notes       String?
-  categoryId  String?           @map("category_id") @db.Uuid
-  source      TransactionSource
+  narrationEnc Bytes?            @map("narration_enc")
+  notes        String?
+  categoryId   String?           @map("category_id") @db.Uuid
+  source       TransactionSource
   // Idempotency key. Imports: hash(account + date + amount + direction +
   // reference or normalised narration). Manual entry: a client-generated
   // UUID, so a double-click or an offline retry never inserts twice.
-  fingerprint String
-  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  fingerprint  String
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account  Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  category Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  user     User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account  Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sources  TransactionSourceLink[]
 
   @@unique([accountId, fingerprint])
   @@index([userId, txnDate(sort: Desc)])
@@ -179,17 +182,17 @@ model Category {
 }
 
 model Budget {
-  id          String       @id @default(uuid(7)) @db.Uuid
-  userId      String       @map("user_id") @db.Uuid
+  id              String       @id @default(uuid(7)) @db.Uuid
+  userId          String       @map("user_id") @db.Uuid
   // Null = overall budget across all expense categories.
-  categoryId  String?      @map("category_id") @db.Uuid
-  period      BudgetPeriod
-  limitPaise  BigInt       @map("limit_paise")
+  categoryId      String?      @map("category_id") @db.Uuid
+  period          BudgetPeriod
+  limitPaise      BigInt       @map("limit_paise")
   // Alerts fire when spend crosses these percentages of the limit.
-  alertAtPercents Int[]    @default([80, 100]) @map("alert_at_percents")
-  active      Boolean      @default(true)
-  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+  alertAtPercents Int[]        @default([80, 100]) @map("alert_at_percents")
+  active          Boolean      @default(true)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   category Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
@@ -229,12 +232,12 @@ model Consent {
 model AuditLog {
   id         BigInt   @id @default(autoincrement())
   userId     String?  @map("user_id") @db.Uuid
-  action     String   // e.g. "transaction.create", "consent.revoke", "auth.login"
+  action     String // e.g. "transaction.create", "consent.revoke", "auth.login"
   entityType String?  @map("entity_type")
   entityId   String?  @map("entity_id")
   ip         String?
   userAgent  String?  @map("user_agent")
-  metadata   Json?    // changed fields only; never secrets or raw narrations
+  metadata   Json? // changed fields only; never secrets or raw narrations
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
   user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -242,4 +245,56 @@ model AuditLog {
   @@index([userId, createdAt(sort: Desc)])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// One uploaded statement file. The file itself is never stored: it's parsed
+// in memory and discarded. We keep its SHA-256 (to recognise a re-upload)
+// and the outcome counts, which also feed the audit trail.
+model ImportBatch {
+  id             String            @id @default(uuid(7)) @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  accountId      String            @map("account_id") @db.Uuid
+  source         TransactionSource // CSV now; PDF / AA / EMAIL later
+  fileName       String            @map("file_name")
+  fileSha256     String            @map("file_sha256") @db.Char(64)
+  periodFrom     DateTime?         @map("period_from") @db.Date
+  periodTo       DateTime?         @map("period_to") @db.Date
+  rowCount       Int               @map("row_count")
+  insertedCount  Int               @map("inserted_count")
+  duplicateCount Int               @map("duplicate_count")
+  errorCount     Int               @map("error_count")
+  // "ok" | "mismatch" | "unavailable": the running-balance check result.
+  balanceCheck   String            @map("balance_check")
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  links   TransactionSourceLink[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([accountId, fileSha256])
+  @@map("import_batches")
+}
+
+// Every time a source reports a transaction, we record it here, even when
+// the transaction already existed (a duplicate). So one payment seen in a
+// statement AND later in an email alert has one transaction with two links:
+// the basis for the reconciliation report (Phase 6).
+model TransactionSourceLink {
+  id            String            @id @default(uuid(7)) @db.Uuid
+  transactionId String            @map("transaction_id") @db.Uuid
+  importBatchId String?           @map("import_batch_id") @db.Uuid
+  source        TransactionSource
+  // Line number in the file (or message id for email, etc.).
+  sourceLine    Int?              @map("source_line")
+  // true = this source created the transaction; false = it was already known.
+  created       Boolean
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  transaction Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+
+  @@unique([importBatchId, transactionId])
+  @@index([transactionId])
+  @@map("transaction_source_links")
 }
