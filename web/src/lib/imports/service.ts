@@ -6,6 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import { dateOnlyToDb, dbDateToIso, isoDateIST } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { formatPaise } from "@/lib/money";
+import { loadRules, ruleCategory } from "@/lib/categorise/service";
 import { signedUploadUrl } from "@/lib/storage";
 import { Prisma } from "@/generated/prisma/client";
 
@@ -114,6 +115,7 @@ async function commitRows(userId: string, accountId: string, fileName: string, p
         if (claimed.count === 0) return null;
       }
 
+      const rules = await loadRules(userId, tx);
       const fingerprints = p.rows.map((r) => r.fingerprint);
       const before = new Set(
         (await tx.transaction.findMany({ where: { accountId, fingerprint: { in: fingerprints } }, select: { fingerprint: true } })).map(
@@ -137,6 +139,8 @@ async function commitRows(userId: string, accountId: string, fileName: string, p
             reference: r.reference,
             source: p.source,
             fingerprint: r.fingerprint,
+            // Rules first; anything unmatched stays uncategorised for now.
+            ...ruleCategory(r, rules),
           })),
         skipDuplicates: true,
       });

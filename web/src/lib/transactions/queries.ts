@@ -85,6 +85,9 @@ export async function listTransactions(f: ListFilters) {
       txnDate: true,
       description: true,
       source: true,
+        merchant: true,
+        categoryId: true,
+        categorySource: true,
         category: { select: { name: true, kind: true } },
         account: { select: { nickname: true, institutionName: true, last4: true } },
       },
@@ -123,6 +126,9 @@ export async function listTransactions(f: ListFilters) {
       date: dbDateToIso(r.txnDate),
       description: r.description,
       category: r.category?.name ?? "Uncategorised",
+      categoryId: r.categoryId,
+      categorySource: r.categorySource,
+      payee: r.merchant ?? r.description,
       isTransfer: r.category?.kind === "TRANSFER",
       account: [r.account.nickname ?? r.account.institutionName, r.account.last4 ? `••${r.account.last4}` : null]
         .filter(Boolean)

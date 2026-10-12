@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 
 import { writeAudit } from "@/lib/audit";
+import { loadRules, ruleCategory } from "@/lib/categorise/service";
 import { getSessionUser } from "@/lib/auth/session";
 import { dateOnlyToDb } from "@/lib/dates";
 import { db } from "@/lib/db";
@@ -56,6 +57,7 @@ export async function addTransaction(formData: FormData): Promise<AddTransaction
   }
 
   const fingerprint = `manual:${input.requestId}`;
+  const rules = input.categoryId ? [] : await loadRules(user.id);
   try {
     await db.$transaction(async (tx) => {
       const txn = await tx.transaction.create({
@@ -67,7 +69,9 @@ export async function addTransaction(formData: FormData): Promise<AddTransaction
           txnDate: dateOnlyToDb(input.txnDate),
           occurredAt: new Date(),
           description: input.description,
-          categoryId: input.categoryId,
+          ...(input.categoryId
+            ? { categoryId: input.categoryId, categorySource: "USER" as const }
+            : ruleCategory({ direction: input.direction, merchant: null, description: input.description }, rules)),
           notes: input.notes,
           source: "MANUAL",
           fingerprint,

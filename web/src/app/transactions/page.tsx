@@ -9,6 +9,9 @@ import { PERIODS } from "@/lib/periods";
 import { listHref, parseListFilters, type ListFilters } from "@/lib/transactions/filters";
 import { getFilterOptions, listTransactions } from "@/lib/transactions/queries";
 
+import { CategoryPicker } from "./category-picker";
+import { RecategoriseButton } from "./recategorise-button";
+
 export const metadata: Metadata = { title: "Transactions · PayTra" };
 
 const PERIOD_LABEL = { day: "Day", week: "Week", month: "Month", year: "Year" } as const;
@@ -154,6 +157,13 @@ async function TransactionsView({ searchParams }: { searchParams: PageProps<"/tr
         </div>
       </form>
 
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <RecategoriseButton />
+        <Link href="/rules" className="text-sm text-muted underline">
+          My category rules
+        </Link>
+      </div>
+
       {/* List */}
       {rows.length === 0 ? (
         <p className="rounded-md border border-dashed border-border p-6 text-center text-sm text-muted">
@@ -169,10 +179,18 @@ async function TransactionsView({ searchParams }: { searchParams: PageProps<"/tr
                   <li key={t.id} className="flex items-center justify-between gap-4 p-3">
                     <div className="min-w-0">
                       <p className="truncate font-medium">{t.description}</p>
-                      <p className="text-xs text-muted">
-                        {t.category}
+                      <div className="text-xs text-muted">
+                        <CategoryPicker
+                          transactionId={t.id}
+                          direction={t.direction}
+                          categoryId={t.categoryId}
+                          categoryName={t.category}
+                          source={t.categorySource}
+                          payee={t.payee}
+                          categories={options.categories}
+                        />
                         {t.isTransfer && " (transfer)"} · {t.account}
-                      </p>
+                      </div>
                     </div>
                     <p className={`shrink-0 font-mono ${t.direction === "DEBIT" ? "text-debit" : "text-credit"}`}>
                       {t.direction === "DEBIT" ? "−" : "+"}
