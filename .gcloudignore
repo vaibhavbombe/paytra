@@ -1,0 +1,23 @@
+# Files NOT uploaded to Cloud Build by `gcloud builds submit`.
+.git
+.gitignore
+.gcloudignore
+
+# Secrets: never leave this machine.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+*.pem
+*.key
+**/service-account*.json
+**/firebase-adminsdk*.json
+
+# Rebuilt inside the build.
+**/node_modules
+**/.next
+**/src/generated
+**/coverage
+**/*.tsbuildinfo
