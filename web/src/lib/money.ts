@@ -17,18 +17,27 @@ export type ParseResult = { ok: true; paise: bigint } | { ok: false; error: stri
  * exponents, and anything with more than 2 decimals rather than rounding it.
  */
 export function parseRupeesToPaise(input: string): ParseResult {
-  const cleaned = input.trim().replace(/^₹\s*/, "").replace(/,/g, "");
-  const match = AMOUNT_RE.exec(cleaned);
-  if (!match) {
+  const paise = parseDecimalToPaise(input);
+  if (paise === null) {
     return { ok: false, error: "Enter an amount like 499 or 499.50" };
   }
-
-  const [, rupees, fraction = ""] = match;
-  const paise = BigInt(rupees) * 100n + BigInt(fraction.padEnd(2, "0"));
 
   if (paise <= 0n) return { ok: false, error: "Amount must be more than ₹0" };
   if (paise > MAX_AMOUNT_PAISE) return { ok: false, error: "Amount is too large" };
   return { ok: true, paise };
+}
+
+/**
+ * Unsigned decimal string -> paise, no range checks ("0" is allowed).
+ * Same integer-only rules as above; null if it isn't a plain amount.
+ * Used directly for statement balances, which may legitimately be 0.
+ */
+export function parseDecimalToPaise(input: string): bigint | null {
+  const cleaned = input.trim().replace(/^₹\s*/, "").replace(/,/g, "");
+  const match = AMOUNT_RE.exec(cleaned);
+  if (!match) return null;
+  const [, rupees, fraction = ""] = match;
+  return BigInt(rupees) * 100n + BigInt(fraction.padEnd(2, "0"));
 }
 
 const inrGrouping = new Intl.NumberFormat("en-IN");
