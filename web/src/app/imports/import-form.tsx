@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 
-import { commitImport, previewImport, type CommitState, type PreviewState } from "./actions";
+import { commitImport, confirmJob, jobStatus, previewImport, startUpload, type CommitState, type PreviewState } from "./actions";
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const POLL_INTERVAL_MS = 1000;
+const POLL_TIMEOUT_MS = 60_000;
 
 type Props = { accounts: { id: string; label: string }[] };
 
@@ -15,6 +19,10 @@ export function ImportForm({ accounts }: Props) {
   const [pdfPassword, setPdfPassword] = useState("");
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [done, setDone] = useState<CommitState | null>(null);
+  // Set when the preview came from the background worker; Import then
+  // confirms that job instead of re-sending the file.
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [stage, setStage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
   const control = "w-full rounded-md border border-input bg-background px-3 py-2";
@@ -28,20 +36,55 @@ export function ImportForm({ accounts }: Props) {
     return fd;
   };
 
+  // Default path: upload straight to Cloud Storage with a short-lived signed
+  // URL, then wait for the worker's preview. Password-protected PDFs use the
+  // direct path instead, so the password never goes through a queue.
+  async function previewViaWorker(f: File): Promise<PreviewState> {
+    setStage("Uploading…");
+    const start = await startUpload({ accountId, fileName: f.name, size: f.size });
+    if (!start.ok) return start;
+
+    const put = await fetch(start.url, { method: "PUT", headers: start.headers, body: f }).catch(() => null);
+    if (!put?.ok) return { ok: false, error: "Upload failed. Check your connection and try again." };
+
+    setStage("Processing…");
+    const deadline = Date.now() + POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await sleep(POLL_INTERVAL_MS);
+      const job = await jobStatus(start.jobId);
+      if (job.status === "READY") {
+        setJobId(start.jobId);
+        return { ok: true, preview: job.preview };
+      }
+      if (job.status === "FAILED") return { ok: false, error: job.error, needsPassword: job.needsPassword };
+      if (job.status === "EXPIRED" || job.status === "NOT_FOUND" || job.status === "COMMITTED") {
+        return { ok: false, error: "This upload is no longer available. Please upload again." };
+      }
+    }
+    return { ok: false, error: "Still processing after a minute. Please try again shortly." };
+  }
+
   function runPreview(e: React.FormEvent) {
     e.preventDefault();
+    if (!file) return;
     setDone(null);
-    startTransition(async () => setPreview(await previewImport(formData())));
+    setJobId(null);
+    startTransition(async () => {
+      const result = isPdf && pdfPassword ? await previewImport(formData()) : await previewViaWorker(file);
+      setStage(null);
+      setPreview(result);
+    });
   }
 
   function runCommit() {
     startTransition(async () => {
-      // Same file + account sent again; the server re-parses it, so nothing
-      // from the preview has to be trusted or stored in between.
-      const result = await commitImport(formData());
+      // Worker path: confirm the stored job. Direct path: the same file is
+      // sent again and re-parsed, so nothing from the preview is trusted.
+      const result = jobId ? await confirmJob(jobId) : await commitImport(formData());
       setDone(result);
       if (result.ok) {
         setPreview(null);
+        setJobId(null);
         setFile(null);
         setPdfPassword("");
         if (fileInput.current) fileInput.current.value = "";
@@ -52,6 +95,7 @@ export function ImportForm({ accounts }: Props) {
   function reset() {
     setPreview(null);
     setDone(null);
+    setJobId(null);
   }
 
   if (accounts.length === 0) {
@@ -129,10 +173,11 @@ export function ImportForm({ accounts }: Props) {
           disabled={!file || !accountId || pending}
           className="rounded-md bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary-hover disabled:opacity-50"
         >
-          {pending && !p ? "Reading…" : "Preview"}
+          {pending && !p ? (stage ?? "Reading…") : "Preview"}
         </button>
         <p className="text-xs text-muted">
-          The file is read in memory and discarded. It is never stored. Nothing is saved until you click Import. Scanned
+          Files go straight to a private, encrypted bucket via a 10-minute upload link, are deleted as soon as they&apos;re
+          read, and nothing is saved to your transactions until you click Import. Scanned
           (image-only) PDFs can&apos;t be read yet; use the CSV download instead.
         </p>
       </form>

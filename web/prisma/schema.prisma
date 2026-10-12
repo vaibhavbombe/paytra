@@ -45,6 +45,15 @@ enum TransactionSource {
   SMS
 }
 
+// Background import lifecycle (upload -> worker parses -> user confirms).
+enum ImportJobStatus {
+  AWAITING_UPLOAD // signed URL issued, file not uploaded yet
+  PARSING // worker claimed it
+  READY // preview stored, waiting for the user to confirm
+  COMMITTED // transactions written (see import_batch_id)
+  FAILED
+}
+
 enum CategoryKind {
   EXPENSE
   INCOME
@@ -90,6 +99,7 @@ model User {
   consents     Consent[]
   auditLogs    AuditLog[]
   imports      ImportBatch[]
+  importJobs   ImportJob[]
 
   @@map("users")
 }
@@ -114,6 +124,7 @@ model Account {
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
   imports      ImportBatch[]
+  importJobs   ImportJob[]
 
   @@unique([userId, accountNumberHash])
   @@index([userId])
@@ -270,6 +281,7 @@ model ImportBatch {
   user    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
   account Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
   links   TransactionSourceLink[]
+  job     ImportJob?
 
   @@index([userId, createdAt(sort: Desc)])
   @@index([accountId, fileSha256])
@@ -297,4 +309,36 @@ model TransactionSourceLink {
   @@unique([importBatchId, transactionId])
   @@index([transactionId])
   @@map("transaction_source_links")
+}
+
+// A statement uploaded to Cloud Storage and parsed by the worker.
+// The file is deleted from the bucket as soon as it's parsed; only the parsed
+// rows (the same fields that end up in transactions, no raw narration) are
+// kept in `result` until the user confirms, then cleared.
+model ImportJob {
+  id            String            @id @default(uuid(7)) @db.Uuid
+  userId        String            @map("user_id") @db.Uuid
+  accountId     String            @map("account_id") @db.Uuid
+  fileName      String            @map("file_name")
+  // uploads/<user_id>/<job_id>: the worker trusts only this path, never the
+  // client, to know which user and job a file belongs to.
+  objectPath    String            @unique @map("object_path")
+  source        TransactionSource // CSV or PDF
+  status        ImportJobStatus   @default(AWAITING_UPLOAD)
+  error         String?
+  fileSha256    String?           @map("file_sha256") @db.Char(64)
+  result        Json?
+  attempts      Int               @default(0)
+  importBatchId String?           @unique @map("import_batch_id") @db.Uuid
+  expiresAt     DateTime          @map("expires_at") @db.Timestamptz(3)
+  createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  importBatch ImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, expiresAt])
+  @@map("import_jobs")
 }
