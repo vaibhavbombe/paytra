@@ -54,6 +54,17 @@ enum ImportJobStatus {
   FAILED
 }
 
+// Who set a transaction's category.
+enum CategorySource {
+  RULE // matched a category rule (built-in or the user's own)
+  USER // chosen by the user: never overwritten by rules
+}
+
+enum RuleMatchType {
+  EXACT // whole text equals the pattern
+  CONTAINS // pattern appears as whole word(s)
+}
+
 enum CategoryKind {
   EXPENSE
   INCOME
@@ -92,14 +103,15 @@ model User {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  accounts     Account[]
-  transactions Transaction[]
-  categories   Category[]
-  budgets      Budget[]
-  consents     Consent[]
-  auditLogs    AuditLog[]
-  imports      ImportBatch[]
-  importJobs   ImportJob[]
+  accounts      Account[]
+  transactions  Transaction[]
+  categories    Category[]
+  budgets       Budget[]
+  consents      Consent[]
+  auditLogs     AuditLog[]
+  imports       ImportBatch[]
+  importJobs    ImportJob[]
+  categoryRules CategoryRule[]
 
   @@map("users")
 }
@@ -132,41 +144,46 @@ model Account {
 }
 
 model Transaction {
-  id           String            @id @default(uuid(7)) @db.Uuid
-  userId       String            @map("user_id") @db.Uuid
-  accountId    String            @map("account_id") @db.Uuid
-  direction    Direction
+  id             String            @id @default(uuid(7)) @db.Uuid
+  userId         String            @map("user_id") @db.Uuid
+  accountId      String            @map("account_id") @db.Uuid
+  direction      Direction
   // Always > 0 (CHECK constraint added in the migration SQL).
-  amountPaise  BigInt            @map("amount_paise")
-  currency     String            @default("INR") @db.Char(3)
+  amountPaise    BigInt            @map("amount_paise")
+  currency       String            @default("INR") @db.Char(3)
   // Calendar date of the transaction as printed by the bank (IST).
   // Date-only on purpose: statements have no time, and a timestamp would
   // shift days across time zones and break daily/monthly totals.
-  txnDate      DateTime          @map("txn_date") @db.Date
+  txnDate        DateTime          @map("txn_date") @db.Date
   // Exact time when known (email / SMS alerts, manual entry).
-  occurredAt   DateTime?         @map("occurred_at") @db.Timestamptz(3)
+  occurredAt     DateTime?         @map("occurred_at") @db.Timestamptz(3)
   // Clean, display-safe text (merchant / payee).
-  description  String
-  merchant     String?
+  description    String
+  merchant       String?
   // Bank reference: UPI RRN / UTR / cheque no. Strongest key for dedupe and
   // reconciliation.
-  reference    String?
+  reference      String?
   // Original bank narration, encrypted (it can contain names, VPAs, phone nos.).
-  narrationEnc Bytes?            @map("narration_enc")
-  notes        String?
-  categoryId   String?           @map("category_id") @db.Uuid
-  source       TransactionSource
+  narrationEnc   Bytes?            @map("narration_enc")
+  notes          String?
+  categoryId     String?           @map("category_id") @db.Uuid
+  // Who set the category. USER choices are never overwritten by rules.
+  categorySource CategorySource?   @map("category_source")
+  // The rule that set the category (explains "why is this Food?").
+  categoryRuleId String?           @map("category_rule_id") @db.Uuid
+  source         TransactionSource
   // Idempotency key. Imports: hash(account + date + amount + direction +
   // reference or normalised narration). Manual entry: a client-generated
   // UUID, so a double-click or an offline retry never inserts twice.
-  fingerprint  String
-  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  fingerprint    String
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user     User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  account  Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  category Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
-  sources  TransactionSourceLink[]
+  user         User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account                 @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category     Category?               @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sources      TransactionSourceLink[]
+  categoryRule CategoryRule?           @relation(fields: [categoryRuleId], references: [id], onDelete: SetNull)
 
   @@unique([accountId, fingerprint])
   @@index([userId, txnDate(sort: Desc)])
@@ -184,9 +201,10 @@ model Category {
   icon      String?
   createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
 
-  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
   budgets      Budget[]
+  rules        CategoryRule[]
 
   @@unique([userId, name])
   @@map("categories")
@@ -341,4 +359,27 @@ model ImportJob {
   @@index([userId, createdAt(sort: Desc)])
   @@index([status, expiresAt])
   @@map("import_jobs")
+}
+
+// "When the payee/description matches PATTERN, use CATEGORY."
+// user_id NULL = built-in rule shared by everyone (seeded); otherwise the
+// user's own, usually created when they correct a category.
+model CategoryRule {
+  id         String        @id @default(uuid(7)) @db.Uuid
+  userId     String?       @map("user_id") @db.Uuid
+  // Normalised: uppercase words separated by single spaces (CHECK below).
+  pattern    String
+  matchType  RuleMatchType @map("match_type")
+  direction  Direction?
+  categoryId String        @map("category_id") @db.Uuid
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime      @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category     Category      @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, pattern, matchType, direction])
+  @@index([userId])
+  @@map("category_rules")
 }
