@@ -12,7 +12,7 @@ and every change is audited.
 **Live demo:** https://paytra-web-983935958947.asia-south1.run.app
 (sign in with Google, or create an email account and verify it)
 
-> **Status: Phase 1 (Foundation) of 8 is complete.** The demo runs on free tiers
+> **Status: Phases 1 (Foundation) and 2 (Statement imports) of 8 are complete.** The demo runs on free tiers
 > and development infrastructure. See [Honest limitations](#honest-limitations).
 
 ---
@@ -26,14 +26,14 @@ user's **bank account**, so PayTra captures it from legitimate bank-side sources
 | Source | How | Status |
 |---|---|---|
 | Manual entry | Cash and anything else | ✅ Phase 1 |
-| Bank statement upload | CSV / PDF, parsed into transactions | Phase 2 |
+| Bank statement upload | CSV / PDF (incl. password-protected), parsed into transactions | ✅ Phase 2 |
 | Bank alert emails | Gmail API, read-only scope, with user permission | Phase 6 |
 | Account Aggregator (RBI framework) | Setu AA **sandbox with mock data** | Phase 5 |
 | Bank SMS (Android app) | Only bank sender IDs, with explicit consent | Mobile M4 |
 
 ---
 
-## What works today (Phase 1)
+## What works today (Phases 1–2)
 
 - **Sign-in:** Google, or email + password.
   - Sign-up enforces password rules and a confirm field.
@@ -52,6 +52,20 @@ user's **bank account**, so PayTra captures it from legitimate bank-side sources
 - **25 built-in categories:** expense, income and transfer.
   - Transfers between your own accounts are excluded from money in/out, so
     they aren't counted as both spending and income.
+- **Bank statement import (CSV and PDF):**
+  - Header-driven parser for HDFC-, SBI- and ICICI-style layouts: separate
+    Withdrawal/Deposit columns, or Amount + Dr/Cr.
+  - Text PDFs are rebuilt into tables from text positions. Password-protected
+    PDFs are supported; the password is used once and never stored.
+  - Each narration yields the channel (UPI/NEFT/IMPS/ATM/card/NACH), the payee
+    and the UPI RRN or NEFT UTR. UPI IDs are not stored.
+  - A preview shows new rows, duplicates and errors with line numbers, plus a
+    **running-balance check**: each row's closing balance must equal the
+    previous balance ± the amount.
+  - **Idempotent:** re-importing a file, an overlapping statement, or the PDF
+    of an already-imported CSV adds zero duplicates (tested).
+  - Every row is linked to the import it came from, as groundwork for
+    cross-source reconciliation.
 - **Light / dark / system theme,** with no flash on load.
 - **Automatic deploys:** every merge to `master` builds, migrates and deploys
   to Cloud Run.
@@ -67,7 +81,13 @@ user's **bank account**, so PayTra captures it from legitimate bank-side sources
    │                  ├──▶ Neon PostgreSQL (Prisma 7, pooled URL from Secret Manager)
    │                  └──▶ Firebase Admin: verify / create / revoke session cookies
    │
-   └──▶ Firebase Auth (Google / email sign-in, client SDK kept in memory only)
+   ├──▶ Firebase Auth (Google / email sign-in, client SDK kept in memory only)
+   │
+   └──PUT (V4 signed URL, 10 min, ≤1 MB)──▶ Cloud Storage: private statements bucket
+                                              │ OBJECT_FINALIZE
+                                              ▼
+                                           Pub/Sub ──push (OIDC)──▶ Cloud Run: paytra-worker (private)
+                                                                     parse → store preview → delete file
 
  GitHub master ──push──▶ Cloud Build trigger (runs as paytra-build)
                            1. docker build (runtime + migrate images)
@@ -77,7 +97,7 @@ user's **bank account**, so PayTra captures it from legitimate bank-side sources
 ```
 
 **Planned additions** (later phases):
-- Worker on Cloud Run, triggered by Pub/Sub, for imports, categorisation and budget checks.
+- The worker also handles categorisation and budget checks.
 - Python FastAPI AI service.
 - FCM push alerts and SSE live updates.
 - React Native (Expo) mobile app on the same API.
@@ -119,6 +139,23 @@ user's **bank account**, so PayTra captures it from legitimate bank-side sources
 - **Race-safe account creation:** a per-user Postgres advisory lock ensures one
   "Cash" account per user. Measured: 10 concurrent requests created 10 accounts
   without the lock and 1 with it.
+
+### Statement-import pipeline
+- **Signed upload URLs:** they allow only one object, one content type and at
+  most 1 MB, for 10 minutes. Cloud Storage itself rejects anything else
+  (measured: oversized → 400, wrong type → 403).
+- **The worker is private.** Only the Pub/Sub push identity has `run.invoker`;
+  anonymous requests get 403.
+  - It trusts only the object path (`uploads/<user>/<job>`), never data from
+    the client.
+  - It claims each job atomically, because Pub/Sub delivers at least once.
+- **Files are deleted as soon as they're parsed.** The bucket has no
+  soft-delete retention and a 1-day auto-delete as a backstop.
+- **Password-protected PDFs** are parsed inside the web request instead, so a
+  password never sits in a queue or the database.
+- **Measured:** upload → preview ready took 2.2–7.5 s over 5 runs on 2026-10-12.
+  The worker's own processing took 0.7–1.5 s; the slower runs include starting
+  from zero instances.
 
 ### Security
 - **Session cookie:** `__Host-` prefix, httpOnly, Secure, SameSite=Lax, 5 days.
@@ -189,7 +226,7 @@ npm run dev                         # http://localhost:3000
 
 ## Tests
 
-`npm test` runs **44 unit tests in 6 files**, measured with Vitest 5 on
+`npm test` runs **81 unit tests in 10 files**, measured with Vitest 5 on
 2026-10-12. They cover:
 - rupee → paise parsing and formatting, including float-trap values
 - IST dates
@@ -197,6 +234,11 @@ npm run dev                         # http://localhost:3000
 - transaction input validation
 - URL filter parsing
 - password rules
+- CSV parsing
+- narration parsing
+- statement parsing, including the running-balance check
+- PDF table rebuilding, including encrypted PDFs, and a test that a PDF and a
+  CSV of the same statement produce identical fingerprints
 
 The database constraints and the audit-log trigger were also checked by
 running the migration against a throwaway Postgres (PGlite) with 22
@@ -218,6 +260,12 @@ accept/reject cases. That check isn't in the automated suite yet.
   products. Production would use Vertex AI.
 - **The login rate limiter is in-memory, per instance.** That's fine at max 1
   instance; more instances would need a shared store (Redis).
+- **Statement imports:**
+  - Scanned (image-only) PDFs aren't supported; they'd need OCR (Document AI,
+    a paid upgrade).
+  - Bank formats vary, and the parser has only been tested on **mock**
+    statements shaped like HDFC/SBI/ICICI exports. No accuracy figure on real
+    statements is claimed.
 - **Not done yet** (Phase 8, hardening):
   - security headers (CSP, HSTS)
   - restricting the Firebase web API key
@@ -231,8 +279,8 @@ accept/reject cases. That check isn't in the automated suite yet.
 ## Roadmap
 
 1. ✅ **Foundation:** auth, schema, manual entry, transaction list, Cloud Run deploy
-2. **Imports:** CSV statement upload → parse → idempotent insert; PDF statements;
-   signed-URL upload → Pub/Sub → worker
+2. ✅ **Imports:** CSV + PDF statements, preview with balance check, idempotent insert;
+   signed-URL upload → Pub/Sub → private worker
 3. **Categorisation, budgets and alerts:** rules engine, 80% / 100% budget
    alerts via FCM and SSE
 4. **Analytics:** charts, recurring-payment detection (subscriptions, EMIs, rent)
