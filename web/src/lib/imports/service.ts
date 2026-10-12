@@ -1,120 +1,42 @@
 import "server-only";
 
-import { createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { writeAudit } from "@/lib/audit";
 import { dateOnlyToDb, dbDateToIso, isoDateIST } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { formatPaise } from "@/lib/money";
+import { signedUploadUrl } from "@/lib/storage";
+import { Prisma } from "@/generated/prisma/client";
 
-import { readPdfStatement } from "./pdf";
 import {
-  parseStatement,
-  parseStatementTable,
-  type BalanceCheck,
-  type ParsedStatement,
-  type RowError,
-  type StatementRow,
-} from "./statement";
+  fromStored,
+  kindFromName,
+  MAX_FILE_BYTES,
+  parseFile,
+  type ParsedFile,
+  type StoredResult,
+} from "./core";
+import type { BalanceCheck, RowError } from "./statement";
 
-export const MAX_FILE_BYTES = 1024 * 1024; // 1 MB ≈ several years of rows
+export { MAX_FILE_BYTES };
 
-export const MAX_PDF_PASSWORD = 64;
+type Parsed = Extract<ParsedFile, { ok: true }>;
+type Failure = { ok: false; error: string; needsPassword?: boolean };
 
-type Analysis =
-  | { ok: false; error: string; needsPassword?: boolean }
-  | {
-      ok: true;
-      accountId: string;
-      fileName: string;
-      fileSha256: string;
-      source: "CSV" | "PDF";
-      rows: StatementRow[];
-      errors: RowError[];
-      balance: BalanceCheck;
-      period: { from: string; to: string } | null;
-      existing: Set<string>; // fingerprints already in the account
-      previousImport: string | null; // date this exact file was imported before
-    };
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const JOB_TTL_MS = 24 * 60 * 60 * 1000; // a parsed preview waits at most a day
 
-/**
- * Validate the upload and parse it. Shared by preview and commit so both see
- * exactly the same rows. The file is held in memory only and never stored.
- */
-async function analyse(userId: string, accountId: unknown, file: unknown, pdfPassword: unknown): Promise<Analysis> {
-  if (typeof accountId !== "string" || !/^[0-9a-f-]{36}$/i.test(accountId)) {
-    return { ok: false, error: "Choose an account." };
-  }
-  // Authorisation: only the caller's own, non-cash accounts.
-  const account = await db.account.findFirst({
+/** Authorisation: the account must be the caller's own, non-cash account. */
+async function ownedImportAccount(userId: string, accountId: unknown) {
+  if (typeof accountId !== "string" || !UUID_RE.test(accountId)) return null;
+  return db.account.findFirst({
     where: { id: accountId, userId, type: { not: "CASH" } },
     select: { id: true },
   });
-  if (!account) return { ok: false, error: "Account not found." };
-
-  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose a CSV or PDF file." };
-  if (file.size > MAX_FILE_BYTES) return { ok: false, error: "File is larger than 1 MB. Export a shorter period." };
-
-  const bytes = new Uint8Array(await file.arrayBuffer());
-  const fileSha256 = createHash("sha256").update(bytes).digest("hex");
-  // Decide by CONTENT, not just the extension: a PDF always starts with "%PDF-".
-  const isPdf = bytes.length > 5 && new TextDecoder().decode(bytes.subarray(0, 5)) === "%PDF-";
-
-  let parsed: ParsedStatement;
-  if (isPdf) {
-    if (!/\.pdf$/i.test(file.name)) return { ok: false, error: "That file is a PDF; rename it to .pdf or choose the CSV." };
-    // The statement's own file password (often DOB / customer ID): used once,
-    // in memory, to open this file. Never stored, logged or audited.
-    const password = typeof pdfPassword === "string" && pdfPassword ? pdfPassword.slice(0, MAX_PDF_PASSWORD) : undefined;
-    const pdf = await readPdfStatement(bytes, password);
-    if (!pdf.ok) {
-      return {
-        ok: false,
-        error: pdf.message,
-        needsPassword: pdf.reason === "password-required" || pdf.reason === "password-incorrect",
-      };
-    }
-    parsed = parseStatementTable(pdf.table, account.id, isoDateIST());
-  } else {
-    if (!/\.csv$/i.test(file.name)) return { ok: false, error: "Only .csv and .pdf statements are supported." };
-    // Binary files (e.g. a renamed XLSX) contain NUL bytes; CSV never does.
-    if (bytes.includes(0)) return { ok: false, error: "That doesn't look like a CSV text file." };
-    parsed = parseStatement(new TextDecoder("utf-8").decode(bytes), account.id, isoDateIST());
-  }
-  if (!parsed.ok) return { ok: false, error: parsed.error };
-  if (parsed.rows.length === 0 && parsed.errors.length === 0) {
-    return { ok: false, error: "No transactions found in the file." };
-  }
-
-  const fingerprints = parsed.rows.map((r) => r.fingerprint);
-  const [found, previous] = await Promise.all([
-    fingerprints.length
-      ? db.transaction.findMany({
-          where: { accountId: account.id, fingerprint: { in: fingerprints } },
-          select: { fingerprint: true },
-        })
-      : [],
-    db.importBatch.findFirst({
-      where: { accountId: account.id, fileSha256 },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    }),
-  ]);
-
-  return {
-    ok: true,
-    accountId: account.id,
-    fileName: file.name.slice(0, 200),
-    fileSha256,
-    source: isPdf ? "PDF" : "CSV",
-    rows: parsed.rows,
-    errors: parsed.errors,
-    balance: parsed.balance,
-    period: parsed.period,
-    existing: new Set(found.map((f) => f.fingerprint)),
-    previousImport: previous ? isoDateIST(previous.createdAt) : null,
-  };
 }
+
+// ── Preview (shared by the direct path and the job path) ──
 
 export type ImportPreview = {
   fileName: string;
@@ -128,89 +50,92 @@ export type ImportPreview = {
   previousImport: string | null;
   newIn: string;
   newOut: string;
-  sample: {
-    line: number;
-    date: string;
-    description: string;
-    direction: "DEBIT" | "CREDIT";
-    amount: string;
-    duplicate: boolean;
-  }[];
+  sample: { line: number; date: string; description: string; direction: "DEBIT" | "CREDIT"; amount: string; duplicate: boolean }[];
 };
 
-export async function previewImport(userId: string, accountId: unknown, file: unknown, pdfPassword: unknown) {
-  const a = await analyse(userId, accountId, file, pdfPassword);
-  if (!a.ok) return a;
-
-  const fresh = a.rows.filter((r) => !a.existing.has(r.fingerprint));
+/** Which rows are new is decided NOW against the database, not at parse time. */
+async function buildPreview(accountId: string, fileName: string, p: Parsed): Promise<ImportPreview> {
+  const fingerprints = p.rows.map((r) => r.fingerprint);
+  const [found, previous] = await Promise.all([
+    fingerprints.length
+      ? db.transaction.findMany({ where: { accountId, fingerprint: { in: fingerprints } }, select: { fingerprint: true } })
+      : [],
+    db.importBatch.findFirst({
+      where: { accountId, fileSha256: p.fileSha256 },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+  ]);
+  const existing = new Set(found.map((f) => f.fingerprint));
+  const fresh = p.rows.filter((r) => !existing.has(r.fingerprint));
   const sum = (d: "DEBIT" | "CREDIT") => fresh.filter((r) => r.direction === d).reduce((s, r) => s + r.amountPaise, 0n);
 
-  const preview: ImportPreview = {
-    fileName: a.fileName,
-    source: a.source,
-    period: a.period,
-    total: a.rows.length,
+  return {
+    fileName,
+    source: p.source,
+    period: p.period,
+    total: p.rows.length,
     newCount: fresh.length,
-    duplicateCount: a.rows.length - fresh.length,
-    errors: a.errors.slice(0, 50),
-    balance: a.balance,
-    previousImport: a.previousImport,
+    duplicateCount: p.rows.length - fresh.length,
+    errors: p.errors.slice(0, 50),
+    balance: p.balance,
+    previousImport: previous ? isoDateIST(previous.createdAt) : null,
     newIn: formatPaise(sum("CREDIT")),
     newOut: formatPaise(sum("DEBIT")),
-    sample: a.rows.slice(0, 100).map((r) => ({
+    sample: p.rows.slice(0, 100).map((r) => ({
       line: r.line,
       date: r.txnDate,
       description: r.description,
       direction: r.direction,
       amount: formatPaise(r.amountPaise),
-      duplicate: a.existing.has(r.fingerprint),
+      duplicate: existing.has(r.fingerprint),
     })),
   };
-  return { ok: true as const, preview };
 }
 
-export async function commitImport(
-  userId: string,
-  accountId: unknown,
-  file: unknown,
-  pdfPassword: unknown,
-  headers: Headers,
-) {
-  const a = await analyse(userId, accountId, file, pdfPassword);
-  if (!a.ok) return a;
-  if (a.rows.length === 0) return { ok: false as const, error: "No valid rows to import." };
+// ── Commit (shared) ──
+
+async function commitRows(userId: string, accountId: string, fileName: string, p: Parsed, headers: Headers, jobId?: string) {
+  if (p.rows.length === 0) return { ok: false as const, error: "No valid rows to import." };
 
   const result = await db.$transaction(
     async (tx) => {
       // Serialise imports per account: two uploads at once can't race on
       // "which rows are new", so the counts and links are exact.
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"import:" + a.accountId}))`;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${"import:" + accountId}))`;
 
-      const fingerprints = a.rows.map((r) => r.fingerprint);
+      if (jobId) {
+        // Claim the job inside the same transaction: a double-click on
+        // Import can't commit the same job twice.
+        const claimed = await tx.importJob.updateMany({
+          where: { id: jobId, userId, status: "READY" },
+          data: { status: "PARSING" },
+        });
+        if (claimed.count === 0) return null;
+      }
+
+      const fingerprints = p.rows.map((r) => r.fingerprint);
       const before = new Set(
-        (
-          await tx.transaction.findMany({
-            where: { accountId: a.accountId, fingerprint: { in: fingerprints } },
-            select: { fingerprint: true },
-          })
-        ).map((t) => t.fingerprint),
+        (await tx.transaction.findMany({ where: { accountId, fingerprint: { in: fingerprints } }, select: { fingerprint: true } })).map(
+          (t) => t.fingerprint,
+        ),
       );
 
       // ON CONFLICT (account_id, fingerprint) DO NOTHING: the database itself
       // guarantees no duplicates, whatever happens above.
       const { count: inserted } = await tx.transaction.createMany({
-        data: a.rows
+        data: p.rows
           .filter((r) => !before.has(r.fingerprint))
           .map((r) => ({
             userId,
-            accountId: a.accountId,
+            accountId,
             direction: r.direction,
             amountPaise: r.amountPaise,
             txnDate: dateOnlyToDb(r.txnDate),
             description: r.description,
             merchant: r.merchant,
             reference: r.reference,
-            source: a.source,
+            source: p.source,
             fingerprint: r.fingerprint,
           })),
         skipDuplicates: true,
@@ -219,40 +144,45 @@ export async function commitImport(
       const batch = await tx.importBatch.create({
         data: {
           userId,
-          accountId: a.accountId,
-          source: a.source,
-          fileName: a.fileName,
-          fileSha256: a.fileSha256,
-          periodFrom: a.period ? dateOnlyToDb(a.period.from) : null,
-          periodTo: a.period ? dateOnlyToDb(a.period.to) : null,
-          rowCount: a.rows.length,
+          accountId,
+          source: p.source,
+          fileName,
+          fileSha256: p.fileSha256,
+          periodFrom: p.period ? dateOnlyToDb(p.period.from) : null,
+          periodTo: p.period ? dateOnlyToDb(p.period.to) : null,
+          rowCount: p.rows.length,
           insertedCount: inserted,
-          duplicateCount: a.rows.length - inserted,
-          errorCount: a.errors.length,
-          balanceCheck: a.balance.status,
+          duplicateCount: p.rows.length - inserted,
+          errorCount: p.errors.length,
+          balanceCheck: p.balance.status,
         },
         select: { id: true },
       });
 
       // Link every row (new or already known) to this import.
       const ids = new Map(
-        (
-          await tx.transaction.findMany({
-            where: { accountId: a.accountId, fingerprint: { in: fingerprints } },
-            select: { id: true, fingerprint: true },
-          })
-        ).map((t) => [t.fingerprint, t.id]),
+        (await tx.transaction.findMany({ where: { accountId, fingerprint: { in: fingerprints } }, select: { id: true, fingerprint: true } })).map(
+          (t) => [t.fingerprint, t.id],
+        ),
       );
       await tx.transactionSourceLink.createMany({
-        data: a.rows.map((r) => ({
+        data: p.rows.map((r) => ({
           transactionId: ids.get(r.fingerprint)!,
           importBatchId: batch.id,
-          source: a.source,
+          source: p.source,
           sourceLine: r.line,
           created: !before.has(r.fingerprint),
         })),
         skipDuplicates: true,
       });
+
+      if (jobId) {
+        // Done: link the batch and drop the stored rows.
+        await tx.importJob.update({
+          where: { id: jobId },
+          data: { status: "COMMITTED", importBatchId: batch.id, result: Prisma.DbNull },
+        });
+      }
 
       await writeAudit(
         tx,
@@ -262,25 +192,130 @@ export async function commitImport(
           entityType: "import_batch",
           entityId: batch.id,
           metadata: {
-            source: a.source,
-            rows: a.rows.length,
+            source: p.source,
+            via: jobId ? "worker" : "direct",
+            rows: p.rows.length,
             inserted,
-            duplicates: a.rows.length - inserted,
-            errors: a.errors.length,
-            balanceCheck: a.balance.status,
-            fileSha256: a.fileSha256,
+            duplicates: p.rows.length - inserted,
+            errors: p.errors.length,
+            balanceCheck: p.balance.status,
+            fileSha256: p.fileSha256,
           },
         },
         headers,
       );
 
-      return { inserted, duplicates: a.rows.length - inserted, errors: a.errors.length };
+      return { inserted, duplicates: p.rows.length - inserted, errors: p.errors.length };
     },
     { timeout: 30_000, maxWait: 10_000 },
   );
 
+  if (!result) return { ok: false as const, error: "This import was already confirmed or has expired." };
   return { ok: true as const, ...result };
 }
+
+// ── Direct path: the file comes with the request (password-locked PDFs) ──
+
+type DirectParse = Failure | { ok: true; parsed: Parsed; accountId: string; fileName: string };
+
+async function directParse(userId: string, accountId: unknown, file: unknown, pdfPassword: unknown): Promise<DirectParse> {
+  const account = await ownedImportAccount(userId, accountId);
+  if (!account) return { ok: false, error: "Account not found." };
+  if (!(file instanceof File) || file.size === 0) return { ok: false, error: "Choose a CSV or PDF file." };
+  if (file.size > MAX_FILE_BYTES) return { ok: false, error: "File is larger than 1 MB. Export a shorter period." };
+  const password = typeof pdfPassword === "string" && pdfPassword ? pdfPassword : undefined;
+  const parsed = await parseFile(new Uint8Array(await file.arrayBuffer()), file.name, account.id, isoDateIST(), password);
+  if (!parsed.ok) return parsed;
+  return { ok: true, parsed, accountId: account.id, fileName: file.name.slice(0, 200) };
+}
+
+export async function previewImport(userId: string, accountId: unknown, file: unknown, pdfPassword: unknown) {
+  const r = await directParse(userId, accountId, file, pdfPassword);
+  if (!r.ok) return r;
+  return { ok: true as const, preview: await buildPreview(r.accountId, r.fileName, r.parsed) };
+}
+
+export async function commitImport(userId: string, accountId: unknown, file: unknown, pdfPassword: unknown, headers: Headers) {
+  const r = await directParse(userId, accountId, file, pdfPassword);
+  if (!r.ok) return r;
+  return commitRows(userId, r.accountId, r.fileName, r.parsed, headers);
+}
+
+// ── Job path: browser uploads to Cloud Storage, the worker parses ──
+
+export async function startUploadJob(userId: string, accountId: unknown, fileName: unknown, size: unknown) {
+  const account = await ownedImportAccount(userId, accountId);
+  if (!account) return { ok: false as const, error: "Account not found." };
+  if (typeof fileName !== "string" || !fileName || fileName.length > 200) return { ok: false as const, error: "Invalid file name." };
+  const kind = kindFromName(fileName);
+  if (!kind) return { ok: false as const, error: "Only .csv and .pdf statements are supported." };
+  if (typeof size !== "number" || size <= 0 || size > MAX_FILE_BYTES) {
+    return { ok: false as const, error: "File is larger than 1 MB. Export a shorter period." };
+  }
+
+  // Limit concurrent pending uploads per user (each holds a signed URL).
+  const pending = await db.importJob.count({
+    where: { userId, status: { in: ["AWAITING_UPLOAD", "PARSING"] }, expiresAt: { gt: new Date() } },
+  });
+  if (pending >= 5) return { ok: false as const, error: "Too many imports in progress. Wait a moment and try again." };
+
+  const jobId = randomUUID();
+  // The path, not the client, tells the worker who owns the file.
+  const objectPath = `uploads/${userId}/${jobId}`;
+  const contentType = kind === "PDF" ? "application/pdf" : "text/csv";
+  await db.importJob.create({
+    data: {
+      id: jobId,
+      userId,
+      accountId: account.id,
+      fileName,
+      objectPath,
+      source: kind,
+      expiresAt: new Date(Date.now() + JOB_TTL_MS),
+    },
+  });
+  const upload = await signedUploadUrl(objectPath, contentType, MAX_FILE_BYTES);
+  return { ok: true as const, jobId, ...upload };
+}
+
+export type JobView =
+  | { status: "AWAITING_UPLOAD" | "PARSING" }
+  | { status: "READY"; preview: ImportPreview }
+  | { status: "FAILED"; error: string; needsPassword: boolean }
+  | { status: "COMMITTED" | "EXPIRED" | "NOT_FOUND" };
+
+export async function getJobView(userId: string, jobId: unknown): Promise<JobView> {
+  if (typeof jobId !== "string" || !UUID_RE.test(jobId)) return { status: "NOT_FOUND" };
+  const job = await db.importJob.findFirst({
+    where: { id: jobId, userId }, // never another user's job
+    select: { status: true, error: true, result: true, source: true, accountId: true, fileName: true, expiresAt: true },
+  });
+  if (!job) return { status: "NOT_FOUND" };
+  if (job.status === "COMMITTED") return { status: "COMMITTED" };
+  if (job.expiresAt < new Date()) return { status: "EXPIRED" };
+  if (job.status === "FAILED") {
+    const needsPassword = (job.result as { needsPassword?: boolean } | null)?.needsPassword === true;
+    return { status: "FAILED", error: job.error ?? "Import failed.", needsPassword };
+  }
+  if (job.status === "READY" && job.result) {
+    const parsed = fromStored(job.result as StoredResult, job.source as "CSV" | "PDF");
+    return { status: "READY", preview: await buildPreview(job.accountId, job.fileName, parsed) };
+  }
+  return { status: job.status === "READY" ? "PARSING" : job.status };
+}
+
+export async function commitJob(userId: string, jobId: unknown, headers: Headers) {
+  if (typeof jobId !== "string" || !UUID_RE.test(jobId)) return { ok: false as const, error: "Import not found." };
+  const job = await db.importJob.findFirst({
+    where: { id: jobId, userId, status: "READY", expiresAt: { gt: new Date() } },
+    select: { accountId: true, fileName: true, result: true, source: true },
+  });
+  if (!job?.result) return { ok: false as const, error: "This import was already confirmed or has expired." };
+  const parsed = fromStored(job.result as StoredResult, job.source as "CSV" | "PDF");
+  return commitRows(userId, job.accountId, job.fileName, parsed, headers, jobId);
+}
+
+// ── History ──
 
 export async function recentImports(userId: string) {
   const rows = await db.importBatch.findMany({
@@ -290,6 +325,7 @@ export async function recentImports(userId: string) {
     select: {
       id: true,
       fileName: true,
+      source: true,
       periodFrom: true,
       periodTo: true,
       rowCount: true,
@@ -304,6 +340,7 @@ export async function recentImports(userId: string) {
   return rows.map((b) => ({
     id: b.id,
     fileName: b.fileName,
+    source: b.source,
     period: b.periodFrom && b.periodTo ? `${dbDateToIso(b.periodFrom)} → ${dbDateToIso(b.periodTo)}` : "—",
     account: [b.account.nickname ?? b.account.institutionName, b.account.last4 ? `••${b.account.last4}` : null]
       .filter(Boolean)

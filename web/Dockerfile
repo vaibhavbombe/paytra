@@ -51,3 +51,17 @@ COPY --from=build --chown=app:app /app/public ./public
 USER app
 EXPOSE 8080
 CMD ["node", "server.js"]
+
+# ── Worker build: one self-contained ESM bundle (esbuild) ──
+FROM build AS worker-build
+RUN npm run build:worker
+
+# ── Worker runtime: Node + a single file, non-root. No node_modules at all. ──
+FROM node:24-alpine AS worker
+WORKDIR /app
+ENV NODE_ENV=production PORT=8080
+RUN addgroup -S app && adduser -S app -G app
+COPY --from=worker-build --chown=app:app /app/dist/worker.mjs ./worker.mjs
+USER app
+EXPOSE 8080
+CMD ["node", "worker.mjs"]
