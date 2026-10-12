@@ -114,14 +114,14 @@ async function TransactionsView({ searchParams }: { searchParams: PageProps<"/tr
           defaultValue={filters.q ?? ""}
           maxLength={60}
           placeholder="Search description"
-          className="rounded-md border border-input bg-transparent px-3 py-1.5 text-sm"
+          className="rounded-md border border-input bg-background px-3 py-1.5 text-sm"
         />
-        <select name="dir" defaultValue={filters.direction ?? ""} className="rounded-md border border-input bg-transparent px-2 py-1.5 text-sm">
+        <select name="dir" defaultValue={filters.direction ?? ""} className="rounded-md border border-input bg-background px-2 py-1.5 text-sm">
           <option value="">In &amp; out</option>
           <option value="DEBIT">Money out</option>
           <option value="CREDIT">Money in</option>
         </select>
-        <select name="cat" defaultValue={filters.categoryId ?? ""} className="rounded-md border border-input bg-transparent px-2 py-1.5 text-sm">
+        <select name="cat" defaultValue={filters.categoryId ?? ""} className="rounded-md border border-input bg-background px-2 py-1.5 text-sm">
           <option value="">All categories</option>
           <option value="none">Uncategorised</option>
           {options.categories.map((c) => (
@@ -130,7 +130,7 @@ async function TransactionsView({ searchParams }: { searchParams: PageProps<"/tr
             </option>
           ))}
         </select>
-        <select name="acc" defaultValue={filters.accountId ?? ""} className="rounded-md border border-input bg-transparent px-2 py-1.5 text-sm">
+        <select name="acc" defaultValue={filters.accountId ?? ""} className="rounded-md border border-input bg-background px-2 py-1.5 text-sm">
           <option value="">All accounts</option>
           {options.accounts.map((a) => (
             <option key={a.id} value={a.id}>

@@ -64,3 +64,28 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
 }
+
+/* Form controls: native dropdown lists (option/optgroup) don't inherit a
+   transparent background, so without this they render in the OS's grey/white
+   in dark mode. In the base layer so utility classes can still override. */
+@layer base {
+  input,
+  select,
+  textarea {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  select option {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+  select optgroup {
+    background-color: var(--background);
+    color: var(--muted);
+    font-weight: 600;
+  }
+  ::placeholder {
+    color: var(--muted);
+    opacity: 1;
+  }
+}
