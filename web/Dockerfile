@@ -30,6 +30,11 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
 
 RUN npx prisma generate && npx next build
 
+# ── Migrations (used by Cloud Build before each deploy; never deployed) ──
+# Has the Prisma CLI + migrations; the runtime image deliberately has neither.
+FROM build AS migrate
+CMD ["npx", "prisma", "migrate", "deploy"]
+
 # ── 3. Runtime: only the standalone output, running as a non-root user ──
 FROM node:24-alpine AS runner
 WORKDIR /app

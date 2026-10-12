@@ -1,0 +1,85 @@
+# PayTra web: build -> push -> migrate -> deploy to Cloud Run (asia-south1).
+#
+# Manual run (from repo root):
+#   gcloud builds submit --config=cloudbuild.yaml \
+#     --service-account=projects/paytra-66fab/serviceAccounts/paytra-build@paytra-66fab.iam.gserviceaccount.com \
+#     --substitutions=_FIREBASE_API_KEY=...,_FIREBASE_APP_ID=...
+# The two Firebase values are public web config, but they're passed in (and
+# set on the GitHub trigger) rather than committed, to keep key-shaped
+# strings out of the repo.
+
+substitutions:
+  _REGION: asia-south1
+  _SERVICE: paytra-web
+  _REPO: paytra
+  _FIREBASE_PROJECT_ID: paytra-66fab
+  _FIREBASE_AUTH_DOMAIN: paytra-66fab.firebaseapp.com
+  _FIREBASE_API_KEY: ""
+  _FIREBASE_APP_ID: ""
+  # Cloud Run's deterministic URL: https://SERVICE-PROJECT_NUMBER.REGION.run.app
+  _APP_ORIGIN: https://paytra-web-983935958947.asia-south1.run.app
+
+options:
+  logging: CLOUD_LOGGING_ONLY # required with a user-specified service account
+  dynamicSubstitutions: true
+
+availableSecrets:
+  secretManager:
+    # Only the migration step sees the direct (non-pooled) URL.
+    - versionName: projects/$PROJECT_ID/secrets/direct-url/versions/latest
+      env: DIRECT_URL
+
+steps:
+  # 1. Build the runtime image and the migrate image (shares cached layers).
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    dir: web
+    args:
+      - build
+      - --target=runner
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - --build-arg=NEXT_PUBLIC_FIREBASE_API_KEY=${_FIREBASE_API_KEY}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_FIREBASE_AUTH_DOMAIN}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID}
+      - --build-arg=NEXT_PUBLIC_FIREBASE_APP_ID=${_FIREBASE_APP_ID}
+      - .
+
+  - id: build-migrate
+    name: gcr.io/cloud-builders/docker
+    dir: web
+    args: [build, --target=migrate, --tag=paytra-migrate, .]
+
+  # 2. Push the runtime image (the migrate image never leaves the build).
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID"]
+
+  # 3. Apply pending migrations. If this fails, the deploy below never runs,
+  #    so new code can't go live against an old schema.
+  - id: migrate
+    name: gcr.io/cloud-builders/docker
+    entrypoint: bash
+    secretEnv: [DIRECT_URL]
+    args: [-c, 'docker run --rm --network=cloudbuild -e DIRECT_URL="$$DIRECT_URL" paytra-migrate']
+
+  # 4. Deploy a new revision.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_SERVICE}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$BUILD_ID
+      - --region=${_REGION}
+      - --service-account=paytra-web@$PROJECT_ID.iam.gserviceaccount.com
+      - --set-secrets=DATABASE_URL=database-url:latest
+      - --set-env-vars=FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID},APP_ORIGIN=${_APP_ORIGIN}
+      - --min-instances=0 # scale to zero: no cost when idle
+      - --max-instances=1 # cost cap (CLAUDE.md: 1-2)
+      - --memory=512Mi
+      - --cpu=1
+      - --concurrency=40
+      - --timeout=60
+      - --port=8080
+      - --allow-unauthenticated # public website; the app does its own auth
