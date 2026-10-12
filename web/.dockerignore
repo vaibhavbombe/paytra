@@ -1,0 +1,21 @@
+# Never send secrets or local build output into the image build.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+service-account*.json
+firebase-adminsdk*.json
+
+node_modules
+.next
+coverage
+src/generated
+*.tsbuildinfo
+
+.git
+.vscode
+Dockerfile
+.dockerignore
+README.md
+AGENTS.md
