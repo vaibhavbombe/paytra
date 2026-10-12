@@ -10,16 +10,21 @@ type Props = { accounts: { id: string; label: string }[] };
 export function ImportForm({ accounts }: Props) {
   const [accountId, setAccountId] = useState(accounts[0]?.id ?? "");
   const [file, setFile] = useState<File | null>(null);
+  // The statement file's own password. Kept only in this component's memory
+  // and sent with the request; the server uses it once and never stores it.
+  const [pdfPassword, setPdfPassword] = useState("");
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [done, setDone] = useState<CommitState | null>(null);
   const [pending, startTransition] = useTransition();
   const fileInput = useRef<HTMLInputElement>(null);
   const control = "w-full rounded-md border border-input bg-background px-3 py-2";
+  const isPdf = Boolean(file && /\.pdf$/i.test(file.name));
 
   const formData = () => {
     const fd = new FormData();
     fd.set("accountId", accountId);
     if (file) fd.set("file", file);
+    if (isPdf && pdfPassword) fd.set("pdfPassword", pdfPassword);
     return fd;
   };
 
@@ -38,6 +43,7 @@ export function ImportForm({ accounts }: Props) {
       if (result.ok) {
         setPreview(null);
         setFile(null);
+        setPdfPassword("");
         if (fileInput.current) fileInput.current.value = "";
       }
     });
@@ -61,6 +67,7 @@ export function ImportForm({ accounts }: Props) {
   }
 
   const p = preview?.ok ? preview.preview : null;
+  const needsPassword = (preview && !preview.ok && preview.needsPassword) || (done && !done.ok && done.needsPassword);
 
   return (
     <div className="space-y-6">
@@ -84,19 +91,39 @@ export function ImportForm({ accounts }: Props) {
             </select>
           </label>
           <label className="block space-y-1">
-            <span className="text-sm font-medium">Statement (.csv, max 1 MB)</span>
+            <span className="text-sm font-medium">Statement (.csv or .pdf, max 1 MB)</span>
             <input
               ref={fileInput}
               type="file"
-              accept=".csv,text/csv"
+              accept=".csv,text/csv,.pdf,application/pdf"
               onChange={(e) => {
                 setFile(e.target.files?.[0] ?? null);
+                setPdfPassword("");
                 reset();
               }}
               className={`${control} file:mr-3 file:rounded file:border-0 file:bg-surface-hover file:px-2 file:py-1 file:text-foreground`}
             />
           </label>
         </div>
+        {(isPdf || needsPassword) && (
+          <label className="block max-w-sm space-y-1">
+            <span className="text-sm font-medium">PDF password (if the file is locked)</span>
+            <input
+              type="password"
+              value={pdfPassword}
+              onChange={(e) => setPdfPassword(e.target.value)}
+              maxLength={64}
+              autoComplete="off"
+              placeholder="e.g. date of birth or customer ID"
+              aria-invalid={Boolean(needsPassword)}
+              className={`${control} ${needsPassword ? "border-danger" : ""}`}
+            />
+            <span className="block text-xs text-muted">
+              This is the statement file&apos;s password from your bank&apos;s email, <strong>not</strong> your net
+              banking password. It&apos;s used once to open the file and never stored.
+            </span>
+          </label>
+        )}
         <button
           type="submit"
           disabled={!file || !accountId || pending}
@@ -105,7 +132,8 @@ export function ImportForm({ accounts }: Props) {
           {pending && !p ? "Reading…" : "Preview"}
         </button>
         <p className="text-xs text-muted">
-          The file is read in memory and discarded. It is never stored. Nothing is saved until you click Import.
+          The file is read in memory and discarded. It is never stored. Nothing is saved until you click Import. Scanned
+          (image-only) PDFs can&apos;t be read yet; use the CSV download instead.
         </p>
       </form>
 
