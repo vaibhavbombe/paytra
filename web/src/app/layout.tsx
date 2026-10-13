@@ -5,6 +5,7 @@ import Link from "next/link";
 import { themeInitScript } from "@/lib/theme";
 
 import "./globals.css";
+import { LiveAlerts } from "./live-alerts";
 import { MainNav } from "./main-nav";
 import { ThemeToggle } from "./theme-toggle";
 
@@ -49,6 +50,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           </div>
         </header>
         {children}
+        <LiveAlerts />
       </body>
     </html>
   );

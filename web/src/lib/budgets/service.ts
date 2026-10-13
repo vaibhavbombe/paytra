@@ -144,31 +144,75 @@ export async function deleteBudget(userId: string, budgetId: string, headers: He
 
 // ── Alerts ──
 
-export async function recentAlerts(userId: string, limit = 10) {
-  const rows = await db.budgetAlert.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: limit,
-    select: {
-      id: true,
-      thresholdPercent: true,
-      spentPaise: true,
-      limitPaise: true,
-      readAt: true,
-      createdAt: true,
-      budget: { select: { period: true, category: { select: { name: true } } } },
-    },
-  });
-  return rows.map((a) => ({
+const ALERT_SELECT = {
+  id: true,
+  budgetId: true,
+  periodStart: true,
+  thresholdPercent: true,
+  spentPaise: true,
+  limitPaise: true,
+  readAt: true,
+  createdAt: true,
+  budget: { select: { period: true, category: { select: { name: true } } } },
+} satisfies Prisma.BudgetAlertSelect;
+
+type AlertRow = Prisma.BudgetAlertGetPayload<{ select: typeof ALERT_SELECT }>;
+
+export type AlertView = { id: string; unread: boolean; text: string; level: "warning" | "over"; date: string };
+
+/** One wording for alerts everywhere (dashboard, live stream, push). */
+function formatAlert(a: AlertRow): AlertView {
+  const scope = `${a.budget.category?.name ?? "overall"} ${a.budget.period === "WEEKLY" ? "weekly" : "monthly"} budget`;
+  const amounts = `${formatPaise(a.spentPaise)} of ${formatPaise(a.limitPaise)}`;
+  return {
     id: a.id,
     unread: a.readAt === null,
-    text:
-      a.thresholdPercent >= 100
-        ? `You've reached your ${a.budget.category?.name ?? "overall"} ${a.budget.period === "WEEKLY" ? "weekly" : "monthly"} budget: ${formatPaise(a.spentPaise)} of ${formatPaise(a.limitPaise)}.`
-        : `${a.thresholdPercent}% of your ${a.budget.category?.name ?? "overall"} ${a.budget.period === "WEEKLY" ? "weekly" : "monthly"} budget used: ${formatPaise(a.spentPaise)} of ${formatPaise(a.limitPaise)}.`,
-    level: a.thresholdPercent >= 100 ? ("over" as const) : ("warning" as const),
+    text: a.thresholdPercent >= 100 ? `You've reached your ${scope}: ${amounts}.` : `${a.thresholdPercent}% of your ${scope} used: ${amounts}.`,
+    level: a.thresholdPercent >= 100 ? "over" : "warning",
     date: isoDateIST(a.createdAt),
-  }));
+  };
+}
+
+/**
+ * Several thresholds of the same budget and period can be reached at once
+ * (one big payment: 0% -> 100%). All are stored (so 80% can't fire later this
+ * period), but only the highest is shown.
+ */
+export function highestPerBudgetPeriod<T extends { budgetId: string; periodStart: Date; thresholdPercent: number }>(rows: T[]): T[] {
+  const best = new Map<string, T>();
+  for (const r of rows) {
+    const key = `${r.budgetId}|${r.periodStart.toISOString()}`;
+    const current = best.get(key);
+    if (!current || r.thresholdPercent > current.thresholdPercent) best.set(key, r);
+  }
+  return rows.filter((r) => best.get(`${r.budgetId}|${r.periodStart.toISOString()}`) === r);
+}
+
+export async function recentAlerts(userId: string, limit = 10): Promise<AlertView[]> {
+  const rows = await db.budgetAlert.findMany({ where: { userId }, orderBy: { createdAt: "desc" }, take: limit * 2, select: ALERT_SELECT });
+  return highestPerBudgetPeriod(rows).slice(0, limit).map(formatAlert);
+}
+
+/**
+ * Alerts newer than `afterId`, oldest first. Ids are UUIDv7 (time-ordered),
+ * so "id > last seen id" is an exact resume cursor for the live stream.
+ */
+export async function alertsAfter(userId: string, afterId: string | null): Promise<{ alerts: AlertView[]; cursor: string | null }> {
+  const rows = await db.budgetAlert.findMany({
+    where: { userId, ...(afterId && { id: { gt: afterId } }) },
+    orderBy: { id: "asc" },
+    take: 20,
+    select: ALERT_SELECT,
+  });
+  // The cursor moves past EVERY row read, including hidden lower thresholds,
+  // so they are never sent later.
+  return { alerts: highestPerBudgetPeriod(rows).map(formatAlert), cursor: rows.at(-1)?.id ?? afterId };
+}
+
+/** Id of the newest alert, to start a fresh stream "from now". */
+export async function latestAlertId(userId: string): Promise<string | null> {
+  const row = await db.budgetAlert.findFirst({ where: { userId }, orderBy: { id: "desc" }, select: { id: true } });
+  return row?.id ?? null;
 }
 
 export async function markAlertsRead(userId: string) {
