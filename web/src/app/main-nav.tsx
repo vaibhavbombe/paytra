@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/imports", label: "Import" },
   { href: "/accounts", label: "Accounts" },
   { href: "/rules", label: "Rules" },
+  { href: "/settings", label: "Privacy" },
 ] as const;
 
 /** App-wide navigation. Hidden on the sign-in page (nothing to navigate to yet). */

@@ -47,7 +47,24 @@ export const getSessionUser = cache(async (): Promise<SessionUser | null> => {
   return user;
 });
 
-async function verifyCaller() {
+/**
+ * Step-up check for dangerous actions (delete account): the session must come
+ * from a sign-in in the last `maxAgeSec` seconds, not just be valid. A stolen
+ * or left-open session alone isn't enough to wipe an account.
+ */
+export async function getRecentlyAuthenticatedUser(maxAgeSec: number) {
+  const decoded = await verifyCaller();
+  if (!decoded) return { ok: false as const, reason: "signed-out" as const };
+  if (Date.now() / 1000 - decoded.auth_time > maxAgeSec) return { ok: false as const, reason: "reauth" as const };
+  const user = await getSessionUser();
+  if (!user) return { ok: false as const, reason: "signed-out" as const };
+  return { ok: true as const, user, firebaseUid: decoded.uid };
+}
+
+// Cached per request: getSessionUser and the step-up check share one verification.
+const verifyCaller = cache(verifyCallerUncached);
+
+async function verifyCallerUncached() {
   // Token verification compares expiry with the current time, so it must run
   // per request, never in a prerender/prefetch. (We deliberately don't use
   // "use cache: private": a revoked session could stay valid for minutes.)
