@@ -19,12 +19,15 @@ const firebaseConfig = {
 
 let auth: Auth | undefined;
 
+export function getClientApp() {
+  return getApps().length ? getApp() : initializeApp(firebaseConfig);
+}
+
 // In-memory persistence: the Firebase SDK keeps nothing in localStorage or
 // IndexedDB. The browser only ever holds our httpOnly session cookie.
 export function getClientAuth(): Auth {
   if (!auth) {
-    const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-    auth = initializeAuth(app, {
+    auth = initializeAuth(getClientApp(), {
       persistence: inMemoryPersistence,
       popupRedirectResolver: browserPopupRedirectResolver,
     });

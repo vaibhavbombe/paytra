@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/db", () => ({ db: {} }));
 vi.mock("@/lib/audit", () => ({ writeAudit: vi.fn() }));
+vi.mock("@/lib/push/service", () => ({ sendPush: vi.fn() }));
 
 const { highestPerBudgetPeriod } = await import("./service");
 

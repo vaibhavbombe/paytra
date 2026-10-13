@@ -8,6 +8,8 @@ import { getBudgetStatuses, recentAlerts } from "@/lib/budgets/service";
 
 import { BudgetCard } from "../budgets/budget-card";
 
+import { PushToggle } from "../settings/push-toggle";
+
 import { AlertsPanel } from "./alerts-panel";
 import { LogoutButton } from "./logout-button";
 
@@ -69,6 +71,7 @@ async function BudgetsSummary() {
   return (
     <div className="mt-8 space-y-4">
       <AlertsPanel alerts={alerts} />
+      <PushToggle />
       {budgets.length > 0 ? (
         <section className="space-y-3">
           <div className="flex items-center justify-between">

@@ -19,6 +19,7 @@ ARG NEXT_PUBLIC_FIREBASE_API_KEY
 ARG NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
 ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID
 ARG NEXT_PUBLIC_FIREBASE_APP_ID
+ARG NEXT_PUBLIC_FIREBASE_VAPID_KEY
 
 # Placeholders only so the build can load modules; nothing connects during the
 # build. Real values (secrets) are injected by Cloud Run at runtime from
