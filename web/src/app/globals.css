@@ -23,6 +23,8 @@
   --danger: #b91c1c;
   --success: #15803d;
   --warning: #b45309;
+  /* Charts: categorical slot 1 (blue) of the validated reference palette. */
+  --chart-1: #2a78d6;
 }
 
 .dark {
@@ -41,6 +43,7 @@
   --danger: #f87171;
   --success: #4ade80;
   --warning: #fbbf24;
+  --chart-1: #3987e5; /* same hue, stepped for the dark surface */
 }
 
 @theme inline {
@@ -58,6 +61,7 @@
   --color-danger: var(--danger);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-chart-1: var(--chart-1);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
