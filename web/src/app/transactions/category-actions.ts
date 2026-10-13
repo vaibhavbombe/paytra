@@ -7,6 +7,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth/session";
 import { recategoriseAll, setTransactionCategory, type SetCategoryResult } from "@/lib/categorise/service";
 import { writeAudit } from "@/lib/audit";
+import { checkBudgetsQuietly } from "@/lib/budgets/service";
 import { db } from "@/lib/db";
 
 const SetCategoryInput = z.object({
@@ -23,7 +24,10 @@ export async function setCategory(input: z.input<typeof SetCategoryInput>): Prom
 
   const { transactionId, categoryId, remember } = parsed.data;
   const result = await setTransactionCategory(user.id, transactionId, categoryId, remember, await headers());
-  if (result.ok) refresh();
+  if (result.ok) {
+    await checkBudgetsQuietly(user.id); // moving spend between categories changes budgets
+    refresh();
+  }
   return result;
 }
 
@@ -31,6 +35,7 @@ export async function recategorise(): Promise<{ ok: true; changed: number } | { 
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Your session has expired. Please sign in again." };
   const changed = await recategoriseAll(user.id, await headers());
+  if (changed) await checkBudgetsQuietly(user.id);
   refresh();
   return { ok: true, changed };
 }

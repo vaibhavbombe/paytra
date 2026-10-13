@@ -40,10 +40,17 @@ export function matchText(t: Categorisable): string {
   return normaliseKey(t.merchant ?? t.description);
 }
 
-/** A debit can be an expense or a transfer out; a credit income or a transfer in. */
+/**
+ * Which categories a transaction may have:
+ *  - money out: an expense, or a transfer (to your own account/investment);
+ *  - money in: income, a transfer, OR an expense category, meaning a refund
+ *    of that expense (a contra-expense: it reduces that category's spend).
+ * Money out under an income category has no sensible meaning.
+ * The single source of truth for this rule (server and UI).
+ */
 export function kindFitsDirection(kind: CategoryKind, direction: Direction): boolean {
   if (kind === "TRANSFER") return true;
-  return direction === "DEBIT" ? kind === "EXPENSE" : kind === "INCOME";
+  return direction === "DEBIT" ? kind === "EXPENSE" : kind === "INCOME" || kind === "EXPENSE";
 }
 
 function matches(rule: Rule, text: string): boolean {

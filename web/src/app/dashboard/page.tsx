@@ -4,7 +4,11 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import { getSessionUser } from "@/lib/auth/session";
+import { getBudgetStatuses, recentAlerts } from "@/lib/budgets/service";
 
+import { BudgetCard } from "../budgets/budget-card";
+
+import { AlertsPanel } from "./alerts-panel";
 import { LogoutButton } from "./logout-button";
 
 export const metadata: Metadata = { title: "Dashboard · PayTra" };
@@ -28,10 +32,16 @@ export default function DashboardPage() {
         <Link href="/imports" className="rounded-md border border-input px-4 py-2 font-medium hover:bg-surface-hover">
           Import statement
         </Link>
+        <Link href="/budgets" className="rounded-md border border-input px-4 py-2 font-medium hover:bg-surface-hover">
+          Budgets
+        </Link>
         <Link href="/accounts" className="rounded-md border border-input px-4 py-2 font-medium hover:bg-surface-hover">
           Accounts
         </Link>
       </nav>
+      <Suspense fallback={null}>
+        <BudgetsSummary />
+      </Suspense>
     </main>
   );
 }
@@ -47,6 +57,40 @@ async function SignedInAs() {
         Signed in as <span className="font-medium">{user.displayName ?? user.email}</span>
       </p>
       <LogoutButton />
+    </div>
+  );
+}
+
+async function BudgetsSummary() {
+  const user = await getSessionUser();
+  if (!user) return null;
+  const [alerts, budgets] = await Promise.all([recentAlerts(user.id, 5), getBudgetStatuses(user.id)]);
+
+  return (
+    <div className="mt-8 space-y-4">
+      <AlertsPanel alerts={alerts} />
+      {budgets.length > 0 ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-medium">Budgets</h2>
+            <Link href="/budgets" className="text-sm text-muted underline">
+              Manage
+            </Link>
+          </div>
+          <ul className="grid gap-3 sm:grid-cols-2">
+            {budgets.map((b) => (
+              <BudgetCard key={b.id} b={b} showDelete={false} />
+            ))}
+          </ul>
+        </section>
+      ) : (
+        <p className="text-sm text-muted">
+          <Link href="/budgets" className="underline">
+            Set a budget
+          </Link>{" "}
+          to get alerts at 80% and 100%.
+        </p>
+      )}
     </div>
   );
 }

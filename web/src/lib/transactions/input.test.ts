@@ -73,9 +73,9 @@ describe("parseManualTransaction", () => {
 });
 
 describe("categoryFitsDirection", () => {
-  it("matches expense to debit and income to credit; transfers either way", () => {
+  it("debits: expense or transfer; credits: income, transfer, or an expense refund", () => {
     expect(categoryFitsDirection("EXPENSE", "DEBIT")).toBe(true);
-    expect(categoryFitsDirection("EXPENSE", "CREDIT")).toBe(false);
+    expect(categoryFitsDirection("EXPENSE", "CREDIT")).toBe(true); // refund
     expect(categoryFitsDirection("INCOME", "CREDIT")).toBe(true);
     expect(categoryFitsDirection("INCOME", "DEBIT")).toBe(false);
     expect(categoryFitsDirection("TRANSFER", "DEBIT")).toBe(true);

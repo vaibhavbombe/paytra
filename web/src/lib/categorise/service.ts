@@ -4,7 +4,7 @@ import { writeAudit } from "@/lib/audit";
 import { db } from "@/lib/db";
 import type { Prisma } from "@/generated/prisma/client";
 
-import { categorise, matchText, prepareRules, type Categorisable, type Rule } from "./engine";
+import { categorise, kindFitsDirection, matchText, prepareRules, type Categorisable, type Rule } from "./engine";
 
 type Tx = Prisma.TransactionClient;
 
@@ -106,8 +106,7 @@ export async function setTransactionCategory(
         select: { kind: true },
       });
       if (!category) return { ok: false, error: "Category not found." };
-      const fits = category.kind === "TRANSFER" || (t.direction === "DEBIT" ? category.kind === "EXPENSE" : category.kind === "INCOME");
-      if (!fits) return { ok: false, error: t.direction === "DEBIT" ? "Pick an expense or transfer category." : "Pick an income or transfer category." };
+      if (!kindFitsDirection(category.kind, t.direction)) return { ok: false, error: "Money out can't use an income category." };
     }
 
     await tx.transaction.update({

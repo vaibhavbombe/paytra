@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Link from "next/link";
+
 import { themeInitScript } from "@/lib/theme";
 
 import "./globals.css";
+import { MainNav } from "./main-nav";
 import { ThemeToggle } from "./theme-toggle";
 
 const geistSans = Geist({
@@ -33,9 +36,17 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-full flex flex-col">
-        <header className="flex items-center justify-between border-b border-border px-6 py-3">
-          <span className="font-semibold">PayTra</span>
-          <ThemeToggle />
+        <header className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border px-4 py-3 sm:px-6">
+          <Link href="/dashboard" className="shrink-0 font-semibold">
+            PayTra
+          </Link>
+          {/* Takes the middle; on narrow screens it wraps to its own row and scrolls sideways. */}
+          <div className="order-last w-full min-w-0 sm:order-none sm:w-auto sm:flex-1">
+            <MainNav />
+          </div>
+          <div className="ml-auto shrink-0">
+            <ThemeToggle />
+          </div>
         </header>
         {children}
       </body>

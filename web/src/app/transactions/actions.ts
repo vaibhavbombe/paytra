@@ -3,6 +3,7 @@
 import { refresh } from "next/cache";
 
 import { writeAudit } from "@/lib/audit";
+import { checkBudgetsQuietly } from "@/lib/budgets/service";
 import { loadRules, ruleCategory } from "@/lib/categorise/service";
 import { getSessionUser } from "@/lib/auth/session";
 import { dateOnlyToDb } from "@/lib/dates";
@@ -96,6 +97,7 @@ export async function addTransaction(formData: FormData): Promise<AddTransaction
     throw e;
   }
 
+  await checkBudgetsQuietly(user.id);
   refresh();
   const verb = input.direction === "DEBIT" ? "Spent" : "Received";
   return { status: "saved", message: `${verb} ${formatPaise(input.amountPaise)} saved.` };

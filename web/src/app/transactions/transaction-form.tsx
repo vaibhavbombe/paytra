@@ -2,6 +2,8 @@
 
 import { useRef, useState, useTransition } from "react";
 
+import { kindFitsDirection } from "@/lib/categorise/engine";
+
 import { addTransaction, type AddTransactionState } from "./actions";
 
 type Props = {
@@ -42,9 +44,7 @@ export function TransactionForm({ today, accounts, categories }: Props) {
     state.status === "error" ? state.fieldErrors?.[name as keyof typeof state.fieldErrors] : undefined;
 
   // Show only categories that make sense for the chosen direction.
-  const visibleCategories = categories.filter((c) =>
-    c.kind === "TRANSFER" || (direction === "DEBIT" ? c.kind === "EXPENSE" : c.kind === "INCOME"),
-  );
+  const visibleCategories = categories.filter((c) => kindFitsDirection(c.kind, direction));
 
   return (
     <form onSubmit={onSubmit} className="space-y-4 rounded-md border border-border p-4" noValidate>
@@ -112,7 +112,7 @@ export function TransactionForm({ today, accounts, categories }: Props) {
               const options = visibleCategories.filter((c) => c.kind === kind);
               if (!options.length) return null;
               return (
-                <optgroup key={kind} label={KIND_LABEL[kind]}>
+                <optgroup key={kind} label={kind === "EXPENSE" && direction === "CREDIT" ? "Refund of an expense" : KIND_LABEL[kind]}>
                   {options.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
