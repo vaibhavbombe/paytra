@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { kindFitsDirection } from "@/lib/categorise/engine";
 import { isoDateIST } from "@/lib/dates";
 import { parseRupeesToPaise } from "@/lib/money";
 
@@ -68,11 +69,5 @@ export function parseManualTransaction(
   return { ok: true, data: { ...rest, amountPaise: money.paise } };
 }
 
-/** A debit can be an expense or a transfer out; a credit income or transfer in. */
-export function categoryFitsDirection(
-  kind: "EXPENSE" | "INCOME" | "TRANSFER",
-  direction: "DEBIT" | "CREDIT",
-): boolean {
-  if (kind === "TRANSFER") return true;
-  return direction === "DEBIT" ? kind === "EXPENSE" : kind === "INCOME";
-}
+/** See kindFitsDirection: one rule shared by the server, rules engine and UI. */
+export const categoryFitsDirection = kindFitsDirection;

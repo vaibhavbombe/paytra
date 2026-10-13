@@ -112,6 +112,7 @@ model User {
   imports       ImportBatch[]
   importJobs    ImportJob[]
   categoryRules CategoryRule[]
+  budgetAlerts  BudgetAlert[]
 
   @@map("users")
 }
@@ -223,9 +224,12 @@ model Budget {
   createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  category Category? @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category Category?     @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  alerts   BudgetAlert[]
 
+  // One budget per (category or overall) and period; NULLS NOT DISTINCT in SQL.
+  @@unique([userId, categoryId, period])
   @@index([userId, active])
   @@map("budgets")
 }
@@ -382,4 +386,27 @@ model CategoryRule {
   @@unique([userId, pattern, matchType, direction])
   @@index([userId])
   @@map("category_rules")
+}
+
+// "You've used 80% / 100% of a budget." One row per budget, period and
+// threshold: the unique key makes "alert once per period" a database fact,
+// so concurrent checks (import + scheduler) can't send it twice.
+model BudgetAlert {
+  id               String    @id @default(uuid(7)) @db.Uuid
+  budgetId         String    @map("budget_id") @db.Uuid
+  userId           String    @map("user_id") @db.Uuid
+  periodStart      DateTime  @map("period_start") @db.Date
+  thresholdPercent Int       @map("threshold_percent")
+  // Snapshot at the moment the threshold was crossed.
+  spentPaise       BigInt    @map("spent_paise")
+  limitPaise       BigInt    @map("limit_paise")
+  readAt           DateTime? @map("read_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  budget Budget @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([budgetId, periodStart, thresholdPercent])
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@map("budget_alerts")
 }

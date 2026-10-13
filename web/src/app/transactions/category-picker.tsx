@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from "react";
 
+import { kindFitsDirection } from "@/lib/categorise/engine";
+
 import { setCategory } from "./category-actions";
 
 type Category = { id: string; name: string; kind: "EXPENSE" | "INCOME" | "TRANSFER" };
@@ -24,9 +26,7 @@ export function CategoryPicker({ transactionId, direction, categoryId, categoryN
   const [pending, startTransition] = useTransition();
 
   // Only categories that make sense for this direction.
-  const options = categories.filter(
-    (c) => c.kind === "TRANSFER" || (direction === "DEBIT" ? c.kind === "EXPENSE" : c.kind === "INCOME"),
-  );
+  const options = categories.filter((c) => kindFitsDirection(c.kind, direction));
 
   function choose(value: string) {
     startTransition(async () => {

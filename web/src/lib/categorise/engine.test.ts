@@ -48,9 +48,11 @@ describe("categorise", () => {
   });
 
   it("respects direction and category kind", () => {
+    const incomeRule = prepareRules([rule({ pattern: "bonus", categoryId: "bonus", categoryKind: "INCOME" })]);
+    expect(categorise(debit("Bonus payout"), incomeRule)).toBeNull(); // money out can't be income
     expect(cat(credit("ACME SALARY OCT"))).toBe("salary");
     expect(cat(debit("SALARY ADVANCE REPAY"))).toBeNull(); // rule is credit-only
-    expect(cat(credit("Swiggy"))).toBeNull(); // expense category can't apply to a credit
+    expect(cat(credit("Swiggy"))).toBe("food"); // money in under an expense = a refund of it
     expect(cat(credit("Swiggy refund"))).toBe("refunds");
     expect(cat(debit("Zerodha"))).toBe("investments"); // transfers fit both directions
   });

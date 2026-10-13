@@ -22,6 +22,7 @@
   --credit: #15803d;
   --danger: #b91c1c;
   --success: #15803d;
+  --warning: #b45309;
 }
 
 .dark {
@@ -39,6 +40,7 @@
   --credit: #4ade80;
   --danger: #f87171;
   --success: #4ade80;
+  --warning: #fbbf24;
 }
 
 @theme inline {
@@ -55,6 +57,7 @@
   --color-credit: var(--credit);
   --color-danger: var(--danger);
   --color-success: var(--success);
+  --color-warning: var(--warning);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

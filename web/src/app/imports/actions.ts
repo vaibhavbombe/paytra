@@ -4,6 +4,7 @@ import { refresh } from "next/cache";
 import { headers } from "next/headers";
 
 import { getSessionUser } from "@/lib/auth/session";
+import { checkBudgetsQuietly } from "@/lib/budgets/service";
 import {
   commitImport as commitDirect,
   commitJob,
@@ -53,7 +54,10 @@ export async function confirmJob(jobId: string): Promise<CommitState> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: SESSION_EXPIRED };
   const result = await commitJob(user.id, jobId, await headers());
-  if (result.ok) refresh();
+  if (result.ok) {
+    await checkBudgetsQuietly(user.id);
+    refresh();
+  }
   return result.ok ? { ok: true, inserted: result.inserted, duplicates: result.duplicates, errors: result.errors } : result;
 }
 
@@ -72,6 +76,9 @@ export async function commitImport(formData: FormData): Promise<CommitState> {
   if (!user) return { ok: false, error: SESSION_EXPIRED };
   if (!(await allowed(user.id))) return { ok: false, error: "Too many uploads. Try again in a minute." };
   const result = await commitDirect(user.id, formData.get("accountId"), formData.get("file"), formData.get("pdfPassword"), await headers());
-  if (result.ok) refresh();
+  if (result.ok) {
+    await checkBudgetsQuietly(user.id);
+    refresh();
+  }
   return result.ok ? { ok: true, inserted: result.inserted, duplicates: result.duplicates, errors: result.errors } : result;
 }
