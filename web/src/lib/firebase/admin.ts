@@ -2,6 +2,7 @@ import "server-only";
 
 import { applicationDefault, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
+import { getMessaging } from "firebase-admin/messaging";
 
 // Application Default Credentials:
 // - dev: GOOGLE_APPLICATION_CREDENTIALS points to a service-account JSON kept
@@ -16,3 +17,4 @@ const app =
   getApps()[0] ?? initializeApp({ credential: applicationDefault(), projectId });
 
 export const adminAuth = getAuth(app);
+export const adminMessaging = getMessaging(app);

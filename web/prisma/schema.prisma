@@ -113,6 +113,7 @@ model User {
   importJobs    ImportJob[]
   categoryRules CategoryRule[]
   budgetAlerts  BudgetAlert[]
+  pushTokens    PushToken[]
 
   @@map("users")
 }
@@ -409,4 +410,22 @@ model BudgetAlert {
   @@unique([budgetId, periodStart, thresholdPercent])
   @@index([userId, readAt, createdAt(sort: Desc)])
   @@map("budget_alerts")
+}
+
+// A browser/device that opted in to push alerts (Firebase Cloud Messaging
+// token). Deleted when the user turns alerts off, signs out, or FCM reports
+// the token as dead.
+model PushToken {
+  id         String   @id @default(uuid(7)) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  token      String   @unique
+  // Short label shown in settings, e.g. "Chrome on Android". No fingerprinting.
+  device     String?
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastSeenAt DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_tokens")
 }

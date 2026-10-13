@@ -5,6 +5,7 @@ import { dateOnlyToDb, isoDateIST } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { formatPaise, parseRupeesToPaise } from "@/lib/money";
 import { periodRange } from "@/lib/periods";
+import { sendPush } from "@/lib/push/service";
 import { Prisma } from "@/generated/prisma/client";
 
 import { BUDGET_SPEND_SQL, budgetLevel, percentUsed, thresholdsReached, type BudgetLevel } from "./spend";
@@ -77,8 +78,23 @@ export async function evaluateBudgetAlerts(userId: string): Promise<number> {
     })),
   );
   if (rows.length === 0) return 0;
-  const { count } = await db.budgetAlert.createMany({ data: rows, skipDuplicates: true });
-  return count;
+  // createManyAndReturn + skipDuplicates returns ONLY the rows this call
+  // inserted: whoever creates an alert is the one (and only one) who pushes it.
+  const created = await db.budgetAlert.createManyAndReturn({ data: rows, skipDuplicates: true, select: { id: true } });
+  if (created.length === 0) return 0;
+
+  const fresh = await db.budgetAlert.findMany({ where: { id: { in: created.map((c) => c.id) } }, select: ALERT_SELECT });
+  for (const a of highestPerBudgetPeriod(fresh)) {
+    // Lock screens are visible to others: no rupee amounts in the push.
+    const scope = `${a.budget.category?.name ?? "Overall"} (${a.budget.period === "WEEKLY" ? "weekly" : "monthly"})`;
+    await sendPush(userId, {
+      title: a.thresholdPercent >= 100 ? "Budget reached" : "Budget alert",
+      body: `${scope}: ${a.thresholdPercent >= 100 ? "100% used" : `${a.thresholdPercent}% used`}. Open PayTra for details.`,
+      url: "/budgets",
+      tag: `budget-${a.budgetId}`, // a newer alert for the same budget replaces the older one
+    }).catch((e) => console.error(JSON.stringify({ severity: "ERROR", message: "push send failed", error: String(e) })));
+  }
+  return created.length;
 }
 
 /** Fire-and-forget wrapper: an alert check must never break the action that triggered it. */

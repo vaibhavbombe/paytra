@@ -10,6 +10,7 @@ import {
   sessionCookieOptions,
 } from "@/lib/auth/session";
 import { db } from "@/lib/db";
+import { removeAllPushTokens } from "@/lib/push/service";
 import { adminAuth } from "@/lib/firebase/admin";
 import { isSameOrigin } from "@/lib/security/origin";
 import { clientIp, rateLimit } from "@/lib/security/rate-limit";
@@ -107,6 +108,7 @@ export async function DELETE(request: Request) {
         select: { id: true },
       });
       if (user) {
+        await removeAllPushTokens(user.id); // signed out everywhere: no more pushes
         await db.$transaction((tx) =>
           writeAudit(tx, { userId: user.id, action: "auth.logout" }, request.headers),
         );

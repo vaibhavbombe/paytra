@@ -6,6 +6,9 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Don't advertise the framework in every response.
   poweredByHeader: false,
+  async headers() {
+    return [{ source: "/push-sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }] }];
+  },
   experimental: {
     serverActions: {
       // Statement files are capped at 1 MB in code; leave room for the
