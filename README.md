@@ -234,7 +234,7 @@ npm run dev                         # http://localhost:3000
 
 `npm test` runs **146 tests in 19 files** (all passing, Vitest, measured on
 2026-10-14 on the `feature/account-aggregator` branch; master has fewer because
-reconciliation and AA are not merged yet). Step-by-step manual checks are in
+reconciliation and AA are not merged yet: 120 tests). Step-by-step manual checks are in
 [docs/TESTING.md](docs/TESTING.md). They cover:
 - rupee → paise parsing and formatting, including float-trap values
 - IST dates

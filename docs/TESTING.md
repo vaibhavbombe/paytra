@@ -36,7 +36,7 @@ npx vitest run
 ```
 
 Expected: `Test Files 19 passed (19)`, `Tests 146 passed (146)` (measured on 14 Oct 2026 on the
-`feature/account-aggregator` branch). They cover paise parsing and formatting, budget periods,
+`feature/account-aggregator` branch; master without reconciliation and AA: 120 tests in 16 files). They cover paise parsing and formatting, budget periods,
 CSV and PDF statement parsing, narration and reference extraction, duplicate detection, the rules
 engine, budget thresholds, bank-alert parsing, the reconciliation engine, Account Aggregator data
 mapping, and the budget and analytics SQL on PGlite (Postgres in WebAssembly, so the real
