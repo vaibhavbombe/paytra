@@ -13,7 +13,7 @@ type Props = {
   direction: "DEBIT" | "CREDIT";
   categoryId: string | null;
   categoryName: string;
-  source: "RULE" | "USER" | null;
+  source: "RULE" | "USER" | "AI" | null;
   payee: string;
   categories: Category[];
 };
@@ -61,6 +61,11 @@ export function CategoryPicker({ transactionId, direction, categoryId, categoryN
         {source === "RULE" && (
           <span className="rounded border border-border px-1 text-[10px] uppercase tracking-wide" title="Set automatically by a rule">
             auto
+          </span>
+        )}
+        {source === "AI" && (
+          <span className="rounded border border-border px-1 text-[10px] uppercase tracking-wide" title="Suggested by AI; click to change">
+            ai
           </span>
         )}
         {note && <span className="text-success">{note}</span>}

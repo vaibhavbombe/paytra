@@ -4,11 +4,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { aiConfigured } from "@/lib/ai/client";
 import { isoDateIST } from "@/lib/dates";
 import { PERIODS } from "@/lib/periods";
 import { listHref, parseListFilters, type ListFilters } from "@/lib/transactions/filters";
 import { getFilterOptions, listTransactions } from "@/lib/transactions/queries";
 
+import { AiSuggestButton } from "./ai-suggest-button";
 import { CategoryPicker } from "./category-picker";
 import { RecategoriseButton } from "./recategorise-button";
 
@@ -158,7 +160,10 @@ async function TransactionsView({ searchParams }: { searchParams: PageProps<"/tr
       </form>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <RecategoriseButton />
+        <span className="flex flex-wrap items-center gap-2">
+          <RecategoriseButton />
+          {aiConfigured() && <AiSuggestButton />}
+        </span>
         <Link href="/rules" className="text-sm text-muted underline">
           My category rules
         </Link>
