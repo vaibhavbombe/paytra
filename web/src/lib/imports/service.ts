@@ -24,6 +24,8 @@ import type { BalanceCheck, RowError } from "./statement";
 export { MAX_FILE_BYTES };
 
 type Parsed = Extract<ParsedFile, { ok: true }>;
+/** What commitRows needs: a parsed statement from a file (CSV/PDF) or from the Account Aggregator. */
+type CommitInput = Omit<Parsed, "source"> & { source: Parsed["source"] | "AA" };
 type Failure = { ok: false; error: string; needsPassword?: boolean };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -115,7 +117,7 @@ async function buildPreview(accountId: string, fileName: string, p: Parsed): Pro
 
 // ── Commit (shared) ──
 
-async function commitRows(userId: string, accountId: string, fileName: string, p: Parsed, headers: Headers, jobId?: string) {
+async function commitRows(userId: string, accountId: string, fileName: string, p: CommitInput, headers: Headers, jobId?: string) {
   if (p.rows.length === 0) return { ok: false as const, error: "No valid rows to import." };
 
   const result = await db.$transaction(
@@ -251,7 +253,7 @@ async function commitRows(userId: string, accountId: string, fileName: string, p
         headers,
       );
 
-      return { inserted, duplicates: p.rows.length - inserted, errors: p.errors.length };
+      return { inserted, duplicates: p.rows.length - inserted, errors: p.errors.length, batchId: batch.id };
     },
     { timeout: 30_000, maxWait: 10_000 },
   );
@@ -273,6 +275,15 @@ async function directParse(userId: string, accountId: unknown, file: unknown, pd
   const parsed = await parseFile(new Uint8Array(await file.arrayBuffer()), file.name, account.id, isoDateIST(), password);
   if (!parsed.ok) return parsed;
   return { ok: true, parsed, accountId: account.id, fileName: file.name.slice(0, 200) };
+}
+
+/**
+ * Commit rows that didn't come from an uploaded file (Account Aggregator):
+ * the exact same idempotent insert, source links, alert reconciliation and
+ * audit as statement imports. Caller has already authorised the account.
+ */
+export function commitAggregatorRows(userId: string, accountId: string, label: string, p: Omit<CommitInput, "source" | "ok">, headers: Headers) {
+  return commitRows(userId, accountId, label, { ...p, ok: true, source: "AA" }, headers);
 }
 
 export async function previewImport(userId: string, accountId: unknown, file: unknown, pdfPassword: unknown) {

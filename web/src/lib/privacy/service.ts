@@ -24,6 +24,13 @@ const ACTION_LABELS: Record<string, string> = {
   "alert.create": "Added a bank alert",
   "alert.merge": "Bank alert matched to statement",
   "reconcile.confirm": "Confirmed a reconciliation match",
+  "consent.request": "Requested bank data consent (Account Aggregator)",
+  "consent.active": "Approved bank data consent",
+  "consent.rejected": "Declined bank data consent",
+  "consent.expired": "Bank data consent expired",
+  "consent.revoked": "Bank data consent revoked at the Account Aggregator",
+  "consent.revoke": "Revoked bank data consent",
+  "consent.import": "Imported transactions via Account Aggregator",
 };
 
 /** 203.0.113.42 -> 203.0.113.x ; 2001:db8:1:2::5 -> 2001:db8:1::/48. Enough to recognise, not to track. */

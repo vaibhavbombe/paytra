@@ -24,5 +24,6 @@ export const config = {
     "/analytics/:path*",
     "/settings/:path*",
     "/reconciliation/:path*",
+    "/aa/:path*",
   ],
 };
