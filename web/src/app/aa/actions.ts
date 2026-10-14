@@ -4,20 +4,21 @@ import { refresh } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
 
-import { requestConsent, revokeAaConsent, syncConsent, type SyncView } from "@/lib/aa/service";
+import { AA_HANDLES, requestConsent, revokeAaConsent, syncConsent, type SyncView } from "@/lib/aa/service";
 import { getSessionUser } from "@/lib/auth/session";
 import { checkBudgetsQuietly } from "@/lib/budgets/service";
 import { clientIp, rateLimit } from "@/lib/security/rate-limit";
 
 const SESSION_EXPIRED = "Your session has expired. Please sign in again.";
 
-export async function startConsent(mobile: string, agreed: boolean): Promise<{ ok: true; approveUrl: string } | { ok: false; error: string }> {
+export async function startConsent(mobile: string, handle: string, agreed: boolean): Promise<{ ok: true; approveUrl: string } | { ok: false; error: string }> {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: SESSION_EXPIRED };
   if (agreed !== true) return { ok: false, error: "Please read and accept what will be shared." };
   const h = await headers();
   if (!rateLimit(`aa-consent:${user.id}:${clientIp(h)}`, 5, 60 * 60_000).ok) return { ok: false, error: "Too many consent requests. Try again later." };
-  const r = await requestConsent(user.id, z.string().max(20).catch("").parse(mobile), h);
+  const aa = z.enum(AA_HANDLES).catch("setu").parse(handle);
+  const r = await requestConsent(user.id, z.string().max(20).catch("").parse(mobile), aa, h);
   return r.ok ? { ok: true, approveUrl: r.approveUrl } : r;
 }
 

@@ -43,9 +43,19 @@ export function normaliseMobile(input: string): string | null {
   return /^[6-9]\d{9}$/.test(digits) ? digits : null;
 }
 
-export async function requestConsent(userId: string, mobile: string, headers: Headers) {
-  const vua = normaliseMobile(mobile);
-  if (!vua) return { ok: false as const, error: "Enter a 10-digit Indian mobile number." };
+/**
+ * Which Account Aggregator the user logs in to (the VUA handle).
+ * Sandbox: "setu" = Setu's test AA (OTP 123456, no real SMS);
+ * "onemoney" = Onemoney UAT (real SMS; the number must be whitelisted by Setu).
+ */
+export const AA_HANDLES = ["setu", "onemoney"] as const;
+export type AaHandle = (typeof AA_HANDLES)[number];
+
+export async function requestConsent(userId: string, mobile: string, handle: AaHandle, headers: Headers) {
+  const number = normaliseMobile(mobile);
+  if (!number) return { ok: false as const, error: "Enter a 10-digit Indian mobile number." };
+  if (!AA_HANDLES.includes(handle)) return { ok: false as const, error: "Choose an Account Aggregator." };
+  const vua = `${number}@${handle}`;
 
   const pending = await db.consent.count({ where: { userId, purpose: "AA_FETCH", status: "PENDING" } });
   if (pending >= MAX_PENDING) return { ok: false as const, error: "You already have consent requests waiting. Approve or let them expire first." };
@@ -63,6 +73,9 @@ export async function requestConsent(userId: string, mobile: string, headers: He
   try {
     created = await createConsent({ vua, from, to, redirectUrl: `${origin}/aa/return?consent=${rowId}` });
   } catch (e) {
+    if (e instanceof SetuError && e.code === "UpstreamInternalServerError") {
+      return { ok: false as const, error: "That Account Aggregator's test service is down right now. Try again later, or pick the other one." };
+    }
     return { ok: false as const, error: e instanceof SetuError ? e.message : "Couldn't create the consent request." };
   }
 

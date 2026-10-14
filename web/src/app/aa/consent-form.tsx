@@ -6,6 +6,7 @@ import { startConsent } from "./actions";
 
 export function ConsentForm({ from, to }: { from: string; to: string }) {
   const [mobile, setMobile] = useState("");
+  const [handle, setHandle] = useState<"setu" | "onemoney">("setu");
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -14,7 +15,7 @@ export function ConsentForm({ from, to }: { from: string; to: string }) {
     e.preventDefault();
     setError(null);
     startTransition(async () => {
-      const r = await startConsent(mobile, agreed);
+      const r = await startConsent(mobile, handle, agreed);
       if (!r.ok) {
         setError(r.error);
         return;
@@ -40,9 +41,17 @@ export function ConsentForm({ from, to }: { from: string; to: string }) {
       <p className="text-xs text-muted">
         You&apos;ll approve on the Account Aggregator&apos;s screen, not in PayTra. PayTra never sees or asks for your net
         banking password or UPI PIN. <strong>Sandbox:</strong> this uses Setu&apos;s test environment with mock bank data,
-        so use a dummy mobile number (e.g. 9999999999); the test bank&apos;s OTP is 123456.
+        so use a dummy mobile number (e.g. 9999999999). With <strong>Setu&apos;s test AA</strong> every OTP is 123456;
+        Onemoney&apos;s test AA sends a real SMS and only works for numbers Setu has whitelisted.
       </p>
       <div className="grid gap-4 sm:grid-cols-2">
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">Account Aggregator</span>
+          <select value={handle} onChange={(e) => setHandle(e.target.value as "setu" | "onemoney")} className="w-full rounded-md border border-input bg-background px-3 py-2">
+            <option value="setu">Setu (test AA, OTP 123456)</option>
+            <option value="onemoney">Onemoney (test AA, real SMS, needs whitelisting)</option>
+          </select>
+        </label>
         <label className="block space-y-1">
           <span className="text-sm font-medium">Mobile number (your Account Aggregator ID)</span>
           <input
