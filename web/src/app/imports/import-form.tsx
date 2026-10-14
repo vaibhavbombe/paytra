@@ -231,6 +231,12 @@ export function ImportForm({ accounts }: Props) {
             <span className="font-mono text-debit">−{p.newOut}</span> out.
           </p>
 
+          {p.alertMatchCount > 0 && (
+            <p className="text-sm">
+              ✓ {p.alertMatchCount} row{p.alertMatchCount === 1 ? "" : "s"} match payments you already recorded from bank alerts
+              (same reference). They&apos;ll be linked to those, not added twice.
+            </p>
+          )}
           <BalanceNote balance={p.balance} />
 
           {p.errors.length > 0 && (
@@ -283,7 +289,7 @@ export function ImportForm({ accounts }: Props) {
                       {r.direction === "DEBIT" ? "−" : "+"}
                       {r.amount}
                     </td>
-                    <td className="p-2 text-xs">{r.duplicate ? "Already imported" : "New"}</td>
+                    <td className="p-2 text-xs">{r.duplicate ? "Already imported" : r.alertMatch ? "Matches a bank alert" : "New"}</td>
                   </tr>
                 ))}
               </tbody>

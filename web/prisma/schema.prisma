@@ -324,6 +324,11 @@ model TransactionSourceLink {
   sourceLine    Int?              @map("source_line")
   // true = this source created the transaction; false = it was already known.
   created       Boolean
+  // When this source was attached to an EXISTING transaction by reconciliation:
+  // "EXACT" (same UPI/NEFT reference, automatic) or "CONFIRMED" (user accepted
+  // a suggested match). Null when it created the transaction or was a plain
+  // re-import of the same file.
+  matchedBy     String?           @map("matched_by")
   createdAt     DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
 
   transaction Transaction  @relation(fields: [transactionId], references: [id], onDelete: Cascade)
