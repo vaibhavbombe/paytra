@@ -21,6 +21,9 @@ const ACTION_LABELS: Record<string, string> = {
   "push.enable": "Turned on push alerts",
   "push.disable": "Turned off push alerts",
   "data.export": "Downloaded your data",
+  "alert.create": "Added a bank alert",
+  "alert.merge": "Bank alert matched to statement",
+  "reconcile.confirm": "Confirmed a reconciliation match",
 };
 
 /** 203.0.113.42 -> 203.0.113.x ; 2001:db8:1:2::5 -> 2001:db8:1::/48. Enough to recognise, not to track. */

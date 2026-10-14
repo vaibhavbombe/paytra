@@ -6,6 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import { dateOnlyToDb, dbDateToIso, isoDateIST } from "@/lib/dates";
 import { db } from "@/lib/db";
 import { formatPaise } from "@/lib/money";
+import { alertOnlyMatchesByReference, normRef } from "@/lib/alerts/service";
 import { loadRules, ruleCategory } from "@/lib/categorise/service";
 import { signedUploadUrl } from "@/lib/storage";
 import { Prisma } from "@/generated/prisma/client";
@@ -46,12 +47,13 @@ export type ImportPreview = {
   total: number;
   newCount: number;
   duplicateCount: number;
+  alertMatchCount: number; // rows that confirm transactions first seen in bank alerts
   errors: RowError[];
   balance: BalanceCheck;
   previousImport: string | null;
   newIn: string;
   newOut: string;
-  sample: { line: number; date: string; description: string; direction: "DEBIT" | "CREDIT"; amount: string; duplicate: boolean }[];
+  sample: { line: number; date: string; description: string; direction: "DEBIT" | "CREDIT"; amount: string; duplicate: boolean; alertMatch: boolean }[];
 };
 
 /** Which rows are new is decided NOW against the database, not at parse time. */
@@ -68,7 +70,22 @@ async function buildPreview(accountId: string, fileName: string, p: Parsed): Pro
     }),
   ]);
   const existing = new Set(found.map((f) => f.fingerprint));
-  const fresh = p.rows.filter((r) => !existing.has(r.fingerprint));
+  // Rows that a saved bank alert already recorded (same reference): they
+  // won't create new transactions, they confirm the alert's.
+  const alertRefs = await alertOnlyMatchesByReference(
+    db,
+    accountId,
+    [...new Set(p.rows.filter((r) => !existing.has(r.fingerprint) && r.reference).map((r) => normRef(r.reference)!))],
+  );
+  const alertMatched = new Set(
+    p.rows
+      .filter((r) => {
+        const m = !existing.has(r.fingerprint) && r.reference ? alertRefs.get(normRef(r.reference)!) : undefined;
+        return m && m.amountPaise === r.amountPaise && m.direction === r.direction;
+      })
+      .map((r) => r.fingerprint),
+  );
+  const fresh = p.rows.filter((r) => !existing.has(r.fingerprint) && !alertMatched.has(r.fingerprint));
   const sum = (d: "DEBIT" | "CREDIT") => fresh.filter((r) => r.direction === d).reduce((s, r) => s + r.amountPaise, 0n);
 
   return {
@@ -77,7 +94,8 @@ async function buildPreview(accountId: string, fileName: string, p: Parsed): Pro
     period: p.period,
     total: p.rows.length,
     newCount: fresh.length,
-    duplicateCount: p.rows.length - fresh.length,
+    duplicateCount: p.rows.length - fresh.length - alertMatched.size,
+    alertMatchCount: alertMatched.size,
     errors: p.errors.slice(0, 50),
     balance: p.balance,
     previousImport: previous ? isoDateIST(previous.createdAt) : null,
@@ -90,6 +108,7 @@ async function buildPreview(accountId: string, fileName: string, p: Parsed): Pro
       direction: r.direction,
       amount: formatPaise(r.amountPaise),
       duplicate: existing.has(r.fingerprint),
+      alertMatch: alertMatched.has(r.fingerprint),
     })),
   };
 }
@@ -122,6 +141,28 @@ async function commitRows(userId: string, accountId: string, fileName: string, p
           (t) => t.fingerprint,
         ),
       );
+
+      // Reconciliation at the door: a row whose reference matches a payment
+      // we only know from a bank ALERT is the same payment. The alert's
+      // transaction absorbs the row (statement is the record of truth: its
+      // date and fingerprint win) instead of a second copy being created.
+      const alertMatches = await alertOnlyMatchesByReference(
+        tx,
+        accountId,
+        [...new Set(p.rows.filter((r) => !before.has(r.fingerprint) && r.reference).map((r) => normRef(r.reference)!))],
+      );
+      const absorbed = new Set<string>();
+      for (const r of p.rows) {
+        const m = !before.has(r.fingerprint) && r.reference ? alertMatches.get(normRef(r.reference)!) : undefined;
+        if (!m || m.amountPaise !== r.amountPaise || m.direction !== r.direction) continue;
+        await tx.transaction.update({
+          where: { id: m.id },
+          data: { fingerprint: r.fingerprint, txnDate: dateOnlyToDb(r.txnDate), reference: r.reference },
+        });
+        alertMatches.delete(normRef(r.reference)!); // one alert absorbs one row
+        absorbed.add(r.fingerprint);
+        before.add(r.fingerprint);
+      }
 
       // ON CONFLICT (account_id, fingerprint) DO NOTHING: the database itself
       // guarantees no duplicates, whatever happens above.
@@ -176,6 +217,7 @@ async function commitRows(userId: string, accountId: string, fileName: string, p
           source: p.source,
           sourceLine: r.line,
           created: !before.has(r.fingerprint),
+          matchedBy: absorbed.has(r.fingerprint) ? "EXACT" : null,
         })),
         skipDuplicates: true,
       });
