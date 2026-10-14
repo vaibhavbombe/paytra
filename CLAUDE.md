@@ -24,11 +24,15 @@ in an enterprise ERP. PayTra should show that domain knowledge.
   revoke with optional delete). AA end-to-end is blocked: Setu's `@setu` test AA returns
   "upstream servers are currently down"; `@onemoney` needs the test number whitelisted by Setu.
   Before merging AA: add `SETU_*` to Secret Manager and the Cloud Run service.
-- **Not started:** Gmail alert import (needs approval for the Gmail API / OAuth consent screen),
-  AI service (Phase 7), KMS field encryption + strict CSP (Phase 8), mobile app (M1–M6).
+- **Phase 7 in progress:** `ai/` FastAPI service (port 8002) with `POST /v1/categorise`
+  (payee + direction only, output limited to the user's categories, 23 pytest tests) and the web
+  "Suggest with AI" button (CategorySource AI; confident answers only). Merged and deployed, but
+  the button is hidden on live until the AI service is deployed to Cloud Run and `AI_SERVICE_URL`
+  is set. Next: test locally with a Gemini key, deploy the AI service, then insights chat.
+- **Not started:** Gmail alert import (needs approval for the Gmail API / OAuth consent screen), KMS field encryption + strict CSP (Phase 8), mobile app (M1–M6).
   Cloud Scheduler daily budget check was skipped by choice (budgets are checked after each
   import or entry).
-- **Tests:** 146 Vitest tests in 19 files on the AA branch, 139 in 18 on master, all passing
+- **Tests:** web 149 Vitest tests in 19 files on master, all passing; AI service 23 pytest tests
   (14 Oct 2026). How to test everything,
   with live links: `docs/TESTING.md`.
 - **Engineering notes** (design decisions, interview Q&A basic → advanced, architecture diagram):
