@@ -24,16 +24,20 @@ in an enterprise ERP. PayTra should show that domain knowledge.
   revoke with optional delete). AA end-to-end is blocked: Setu's `@setu` test AA returns
   "upstream servers are currently down"; `@onemoney` needs the test number whitelisted by Setu.
   Before merging AA: add `SETU_*` to Secret Manager and the Cloud Run service.
-- **Phase 7 in progress:** AI service `ai/` (FastAPI) deployed as private Cloud Run service
+- **Phase 7 (AI) live:** AI service `ai/` (FastAPI) deployed as private Cloud Run service
   `paytra-ai` (SA `paytra-ai` reads only secret `gemini-api-key`; only `paytra-web` has
   run.invoker; model `gemini-3.5-flash-lite` via `_AI_MODEL`). `POST /v1/categorise`: payee +
   direction only, output limited to the user's categories, 23 pytest tests. Web "Suggest with AI"
   (CategorySource AI; confident answers only) asks for a mock-data confirmation first.
-  Next: insights chat with read-only tools, unusual-spending detection.
+  Insights chat (`/insights`, "Ask"): the AI returns one of 5 read-only query plans; the web app
+  re-checks it, runs parameterised SQL for the user and writes the answer (amounts never sent).
+  Unusual spending on the dashboard: payments >= 3x the category median (90 days, >= 5 earlier
+  payments, >= Rs 500) and category months > 1.5x the 3-month median (+Rs 1,000), all in SQL.
+  Phase 7 is complete apart from a labelled AI evaluation set.
 - **Not started:** Gmail alert import (needs approval for the Gmail API / OAuth consent screen), KMS field encryption + strict CSP (Phase 8), mobile app (M1–M6).
   Cloud Scheduler daily budget check was skipped by choice (budgets are checked after each
   import or entry).
-- **Tests:** web 149 Vitest tests in 19 files on master, all passing; AI service 23 pytest tests
+- **Tests:** web 175 Vitest tests in 22 files on master, all passing; AI service 37 pytest tests
   (14 Oct 2026). How to test everything,
   with live links: `docs/TESTING.md`.
 - **Engineering notes** (design decisions, interview Q&A basic → advanced, architecture diagram):
