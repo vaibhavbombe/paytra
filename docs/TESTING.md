@@ -25,7 +25,7 @@ The live service scales to zero, so the first request after a quiet period takes
 | Budgets, 80% / 100% alerts, push | Yes | Yes |
 | Analytics, recurring payments | Yes | Yes |
 | Privacy: activity log, export, delete account | Yes | Yes |
-| Reconciliation (bank alerts) | Not yet | `feature/account-aggregator` |
+| Reconciliation (bank alerts) | Yes | Yes |
 | Account Aggregator (Setu sandbox) | Not yet | `feature/account-aggregator`; Setu's test AA is down at the time of writing |
 
 ## Automated tests
@@ -36,7 +36,7 @@ npx vitest run
 ```
 
 Expected: `Test Files 19 passed (19)`, `Tests 146 passed (146)` (measured on 14 Oct 2026 on the
-`feature/account-aggregator` branch; master without reconciliation and AA: 120 tests in 16 files). They cover paise parsing and formatting, budget periods,
+`feature/account-aggregator` branch; master without the Account Aggregator: 139 tests in 18 files). They cover paise parsing and formatting, budget periods,
 CSV and PDF statement parsing, narration and reference extraction, duplicate detection, the rules
 engine, budget thresholds, bank-alert parsing, the reconciliation engine, Account Aggregator data
 mapping, and the budget and analytics SQL on PGlite (Postgres in WebAssembly, so the real
@@ -116,7 +116,7 @@ Use a test account. Each step says where to go and what to expect.
    If the sign-in is older than 10 minutes, expect a request to sign in again first.
    After deletion, expect to be signed out with all data gone.
 
-### 8. Reconciliation (local branch)
+### 8. Reconciliation
 
 1. `/reconciliation` → paste a mock bank alert, for example:
    `Rs.450.00 debited from A/c XX4821 on 05-10-26 to VPA swiggy@icici UPI Ref 427812345678`

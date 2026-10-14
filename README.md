@@ -15,8 +15,8 @@ and every change is audited.
 (sign in with Google, or create an email account and verify it)
 
 > **Status (14 Oct 2026):** Phases 1–4 (foundation, statement imports, categories + budgets + alerts,
-> analytics) and privacy controls are live. Reconciliation of bank alerts and the Account Aggregator
-> (Setu sandbox) are built on a branch and not yet deployed. The demo runs on free tiers and
+> analytics), privacy controls and reconciliation of bank alerts against statements are live. The
+> Account Aggregator (Setu sandbox) is built on a branch and not yet deployed. The demo runs on free tiers and
 > development infrastructure. See [Honest limitations](#honest-limitations).
 >
 > **How to test every feature, with expected results:** [docs/TESTING.md](docs/TESTING.md)
@@ -234,7 +234,7 @@ npm run dev                         # http://localhost:3000
 
 `npm test` runs **146 tests in 19 files** (all passing, Vitest, measured on
 2026-10-14 on the `feature/account-aggregator` branch; master has fewer because
-reconciliation and AA are not merged yet: 120 tests). Step-by-step manual checks are in
+the Account Aggregator is not merged yet: 139 tests in 18 files). Step-by-step manual checks are in
 [docs/TESTING.md](docs/TESTING.md). They cover:
 - rupee → paise parsing and formatting, including float-trap values
 - IST dates

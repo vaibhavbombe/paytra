@@ -17,10 +17,10 @@ in an enterprise ERP. PayTra should show that domain knowledge.
 - **Done and live (master):** Phases 1–4 (foundation, CSV/PDF imports via signed URL → Cloud
   Storage → Pub/Sub → worker, rules + budgets + 80/100% alerts via SSE and FCM web push,
   analytics + recurring payments), privacy (activity log, export, step-up account deletion,
-  security headers), ₹ app logo (`web/src/app/icon.svg`, `logo.tsx`), `docs/TESTING.md`.
-- **Built, on branch `feature/account-aggregator`, not merged:** Phase 6 reconciliation
-  (pasted bank alerts, exact merge on UPI/NEFT reference, suggestions within ±2 days, report) and
-  Phase 5 Account Aggregator (Setu sandbox: consent, fetch, import through the statement parser,
+  security headers), ₹ app logo (`web/src/app/icon.svg`, `logo.tsx`), `docs/TESTING.md`,
+  Phase 6 reconciliation (pasted bank alerts, exact merge on UPI/NEFT reference, suggestions
+  within ±2 days, report; Gmail import still to do).
+- **Built, on branch `feature/account-aggregator`, not merged:** Phase 5 Account Aggregator (Setu sandbox: consent, fetch, import through the statement parser,
   revoke with optional delete). AA end-to-end is blocked: Setu's `@setu` test AA returns
   "upstream servers are currently down"; `@onemoney` needs the test number whitelisted by Setu.
   Before merging AA: add `SETU_*` to Secret Manager and the Cloud Run service.
@@ -28,7 +28,7 @@ in an enterprise ERP. PayTra should show that domain knowledge.
   AI service (Phase 7), KMS field encryption + strict CSP (Phase 8), mobile app (M1–M6).
   Cloud Scheduler daily budget check was skipped by choice (budgets are checked after each
   import or entry).
-- **Tests:** 146 Vitest tests in 19 files on the AA branch, 120 in 16 on master, all passing
+- **Tests:** 146 Vitest tests in 19 files on the AA branch, 139 in 18 on master, all passing
   (14 Oct 2026). How to test everything,
   with live links: `docs/TESTING.md`.
 - **Engineering notes** (design decisions, interview Q&A basic → advanced, architecture diagram):
