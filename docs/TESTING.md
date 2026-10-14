@@ -173,6 +173,21 @@ Measured on 14 Oct 2026 with 8 mock payees on `gemini-3.5-flash-lite`: 1.3–1.9
 What leaves PayTra: the question, today's date and category names. Amounts and transactions never do;
 the AI only picks one of five read-only queries, and PayTra calculates and writes the answer.
 
+### 12. Unusual spending (no AI)
+
+1. With at least 5 earlier mock payments in one category (e.g. five food orders of ₹300–500 in the
+   last 90 days), add a ₹4,000 payment in that category dated within the last 30 days.
+2. `/dashboard` → expect an **Unusual spending** card: *"₹4,000.00 is 10× your typical Food & Dining
+   payment (₹400.00)"*. A ₹600 order (1.5×) or a payment under ₹500 is not flagged.
+3. Category spike: if a category's spend so far this month is more than 1.5× the median of the
+   last 3 months and at least ₹1,000 above it, the card shows *"Travel: ₹6,000.00 so far this
+   month, 3.0× a typical month (₹2,000.00)"*.
+4. With nothing unusual, the card doesn't appear at all.
+
+Rules: typical = the median (outliers don't shift it), computed in SQL with `percentile_disc` so it
+is a real stored amount; a category needs 5 earlier payments (or a non-zero typical month) before it
+can be judged. Covered by `src/lib/anomalies/sql.test.ts` on PGlite.
+
 ## Security checks
 
 | Check | How | Expected |

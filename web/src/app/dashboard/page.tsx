@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
+import { getUnusualSpending } from "@/lib/anomalies/service";
 import { getSessionUser } from "@/lib/auth/session";
 import { getBudgetStatuses, recentAlerts } from "@/lib/budgets/service";
 
@@ -12,6 +13,7 @@ import { PushToggle } from "../settings/push-toggle";
 
 import { AlertsPanel } from "./alerts-panel";
 import { LogoutButton } from "./logout-button";
+import { UnusualSpending } from "./unusual-spending";
 
 export const metadata: Metadata = { title: "Dashboard · PayTra" };
 
@@ -66,11 +68,12 @@ async function SignedInAs() {
 async function BudgetsSummary() {
   const user = await getSessionUser();
   if (!user) return null;
-  const [alerts, budgets] = await Promise.all([recentAlerts(user.id, 5), getBudgetStatuses(user.id)]);
+  const [alerts, budgets, unusual] = await Promise.all([recentAlerts(user.id, 5), getBudgetStatuses(user.id), getUnusualSpending(user.id)]);
 
   return (
     <div className="mt-8 space-y-4">
       <AlertsPanel alerts={alerts} />
+      <UnusualSpending payments={unusual.payments} spikes={unusual.spikes} />
       <PushToggle />
       {budgets.length > 0 ? (
         <section className="space-y-3">
