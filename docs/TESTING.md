@@ -158,6 +158,21 @@ AI service tests: `cd ai; .venv\Scripts\python -m pytest -q` → `23 passed`.
 Measured on 14 Oct 2026 with 8 mock payees on `gemini-3.5-flash-lite`: 1.3–1.9 s per call;
 6 of 8 categorised, the personal name and a prompt-injection payee left uncategorised.
 
+### 11. Ask about your spending (insights chat, mock data only)
+
+1. **Ask** in the nav → tick the mock-data box → try the example questions.
+2. "How much did I spend on food last month?" → expect a one-line answer in ₹ plus chips showing how
+   it was read: *Period: 1 Sept 2026 to 30 Sept 2026 · Category: Food & Dining*. The total should
+   match `/analytics` for that month and category.
+3. "Where did my money go this year?" → a category table with shares; "Top 5 payees in September" →
+   a payee table; "List my Swiggy orders this month" → matching transactions, newest first.
+4. "Should I invest in index funds?", "Delete all my transactions", "What will I spend next month?" →
+   a polite refusal, nothing run.
+5. `/settings` → activity log shows "Asked a question about spending" without the question text.
+
+What leaves PayTra: the question, today's date and category names. Amounts and transactions never do;
+the AI only picks one of five read-only queries, and PayTra calculates and writes the answer.
+
 ## Security checks
 
 | Check | How | Expected |

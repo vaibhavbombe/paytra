@@ -87,3 +87,6 @@ SELECT COALESCE(t.merchant, t.description) AS payee,
 ${FROM}
   AND t.direction = 'DEBIT' AND (c.kind IS NULL OR c.kind <> 'TRANSFER' OR c.name = 'Investments')
 ORDER BY t.txn_date`;
+
+// Shared with the insights queries, so "spent" means the same everywhere.
+export { FROM as TXN_FROM_SQL, INCOME as INCOME_SQL, SPEND as SPEND_SQL };

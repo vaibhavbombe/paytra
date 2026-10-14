@@ -35,16 +35,16 @@ async function idToken(audience: string): Promise<string | null> {
   return res.text();
 }
 
-export async function aiCategorise(items: AiPayee[], categories: AiCategory[]) {
+async function post(path: string, body: unknown): Promise<unknown> {
   const base = process.env.AI_SERVICE_URL;
   if (!base) throw new AiUnavailable("AI_SERVICE_URL not set");
   const token = await idToken(base);
   let res: Response;
   try {
-    res = await fetch(`${base.replace(/\/$/, "")}/v1/categorise`, {
+    res = await fetch(`${base.replace(/\/$/, "")}${path}`, {
       method: "POST",
       headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
-      body: JSON.stringify({ items, categories }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(TIMEOUT_MS),
       cache: "no-store",
     });
@@ -52,6 +52,17 @@ export async function aiCategorise(items: AiPayee[], categories: AiCategory[]) {
     throw new AiUnavailable(e instanceof Error ? e.name : "fetch failed");
   }
   if (!res.ok) throw new AiUnavailable(`AI service: ${res.status}`);
+  return res.json();
+}
+
+export async function aiCategorise(items: AiPayee[], categories: AiCategory[]) {
   // Validate the response too: the web app trusts nothing that crosses a boundary.
-  return CategoriseResponse.parse(await res.json());
+  return CategoriseResponse.parse(await post("/v1/categorise", { items, categories }));
+}
+
+const PlanResponse = z.object({ plan: z.unknown(), model: z.string() });
+
+/** Insights step 1: question → one read-only query plan (checked again by the caller). */
+export async function aiPlanInsight(question: string, today: string, categories: string[]) {
+  return PlanResponse.parse(await post("/v1/insights/plan", { question, today, categories }));
 }

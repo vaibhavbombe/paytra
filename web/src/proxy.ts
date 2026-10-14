@@ -21,6 +21,7 @@ export const config = {
     "/imports/:path*",
     "/rules/:path*",
     "/budgets/:path*",
+    "/insights/:path*",
     "/analytics/:path*",
     "/settings/:path*",
     "/reconciliation/:path*",
