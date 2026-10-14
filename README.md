@@ -1,9 +1,11 @@
+<img src="web/src/app/icon.svg" alt="PayTra logo" width="64" height="64">
+
 # PayTra: personal finance tracker
 
 PayTra brings all of a person's payments into one place, including UPI payments
 made through GPay, PhonePe and Paytm. Users can track spending by day, week,
-month and year. Budgets, live alerts and AI-assisted analytics are planned for
-later phases (see [Roadmap](#roadmap)).
+month and year, set budgets with live alerts, and see analytics and recurring
+payments. AI-assisted insights are planned (see [Roadmap](#roadmap)).
 
 It is built the way a bank or fintech would expect. Money is stored as exact
 integers, imports never create duplicates, data is accessed only with consent,
@@ -12,8 +14,12 @@ and every change is audited.
 **Live demo:** https://paytra-web-983935958947.asia-south1.run.app
 (sign in with Google, or create an email account and verify it)
 
-> **Status: Phases 1 (Foundation) and 2 (Statement imports) of 8 are complete.** The demo runs on free tiers
-> and development infrastructure. See [Honest limitations](#honest-limitations).
+> **Status (14 Oct 2026):** Phases 1–4 (foundation, statement imports, categories + budgets + alerts,
+> analytics) and privacy controls are live. Reconciliation of bank alerts and the Account Aggregator
+> (Setu sandbox) are built on a branch and not yet deployed. The demo runs on free tiers and
+> development infrastructure. See [Honest limitations](#honest-limitations).
+>
+> **How to test every feature, with expected results:** [docs/TESTING.md](docs/TESTING.md)
 
 ---
 
@@ -226,8 +232,10 @@ npm run dev                         # http://localhost:3000
 
 ## Tests
 
-`npm test` runs **81 unit tests in 10 files**, measured with Vitest 5 on
-2026-10-12. They cover:
+`npm test` runs **146 tests in 19 files** (all passing, Vitest, measured on
+2026-10-14 on the `feature/account-aggregator` branch; master has fewer because
+reconciliation and AA are not merged yet: 120 tests). Step-by-step manual checks are in
+[docs/TESTING.md](docs/TESTING.md). They cover:
 - rupee → paise parsing and formatting, including float-trap values
 - IST dates
 - day/week/month/year period ranges, including leap years and year boundaries

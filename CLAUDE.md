@@ -10,6 +10,42 @@ calculations and consent-based data access matter more than visual polish.
 Vaibhav's background: he builds Finance & Accounts (FIAC) modules, including bank reconciliation,
 in an enterprise ERP. PayTra should show that domain knowledge.
 
+## Current status (14 Oct 2026)
+- **Live:** https://paytra-web-983935958947.asia-south1.run.app (master; Cloud Build trigger
+  `deploy-on-master` skips commits that only change `*.md`).
+- **Code:** https://github.com/vaibhavbombe/paytra
+- **Done and live (master):** Phases 1–4 (foundation, CSV/PDF imports via signed URL → Cloud
+  Storage → Pub/Sub → worker, rules + budgets + 80/100% alerts via SSE and FCM web push,
+  analytics + recurring payments), privacy (activity log, export, step-up account deletion,
+  security headers).
+- **Built, on branch `feature/account-aggregator`, not merged:** ₹ app logo
+  (`web/src/app/icon.svg`, `logo.tsx`), Phase 6 reconciliation
+  (pasted bank alerts, exact merge on UPI/NEFT reference, suggestions within ±2 days, report) and
+  Phase 5 Account Aggregator (Setu sandbox: consent, fetch, import through the statement parser,
+  revoke with optional delete). AA end-to-end is blocked: Setu's `@setu` test AA returns
+  "upstream servers are currently down"; `@onemoney` needs the test number whitelisted by Setu.
+  Before merging AA: add `SETU_*` to Secret Manager and the Cloud Run service.
+- **Not started:** Gmail alert import (needs approval for the Gmail API / OAuth consent screen),
+  AI service (Phase 7), KMS field encryption + strict CSP (Phase 8), mobile app (M1–M6).
+  Cloud Scheduler daily budget check was skipped by choice (budgets are checked after each
+  import or entry).
+- **Tests:** 146 Vitest tests in 19 files, all passing (14 Oct 2026). How to test everything,
+  with live links: `docs/TESTING.md`.
+- **Engineering notes** (design decisions, interview Q&A basic → advanced, architecture diagram):
+  https://claude.ai/code/artifact/d0863ec3-6d0a-4a2c-b0b8-2b9a66d0ed59
+
+## Key decisions already made (don't re-litigate without a reason)
+- Dev and live share one Neon database, so every migration is **expand → contract**; test new
+  migrations on PGlite first.
+- Reconciliation auto-merges **only on an equal UPI/NEFT reference**; anything weaker is a
+  suggestion the user confirms; equal candidates are flagged ambiguous, never auto-picked.
+- AA data is converted into a statement table and parsed by the same parser, so fingerprints
+  match CSV/PDF imports. Consent: DEPOSIT, TRANSACTIONS + SUMMARY, 12 months, purpose 102,
+  one-time fetch, valid 1 month.
+- Push notifications never contain rupee amounts. SSE only for visible tabs (~50 s streams,
+  resume by UUIDv7 cursor).
+- Rate limiter is in memory: correct only while Cloud Run max instances = 1.
+
 ## Important truth about UPI apps
 GPay, PhonePe and Paytm have NO public API for reading a user's transaction history.
 Never claim or build a "direct GPay/PhonePe integration". UPI payments debit the user's bank
