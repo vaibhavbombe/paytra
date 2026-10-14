@@ -14,6 +14,7 @@ const ACTION_LABELS: Record<string, string> = {
   "transaction.category": "Changed a category",
   "category.recategorise": "Auto-categorised transactions",
   "category.ai_suggest": "Asked AI to suggest categories",
+  "insights.ask": "Asked a question about spending",
   "rule.delete": "Deleted a category rule",
   "import.commit": "Imported a statement",
   "account.create": "Added an account",

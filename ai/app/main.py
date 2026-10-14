@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 
 from .categorise import Model, categorise
+from .insights import PlanRequest, PlanResponse, plan_question
 from .schemas import CategoriseRequest, CategoriseResponse
 
 log = logging.getLogger("paytra.ai")
@@ -66,3 +67,18 @@ async def categorise_route(body: CategoriseRequest, request: Request) -> Categor
         sum(1 for s in suggestions if s.category is not None),
     )
     return CategoriseResponse(suggestions=suggestions, model=model.name)
+
+
+@app.post("/v1/insights/plan", response_model=PlanResponse)
+async def plan_route(body: PlanRequest, request: Request) -> PlanResponse:
+    model: Model | None = request.app.state.model
+    if model is None:
+        raise HTTPException(status_code=503, detail="AI model not configured")
+    try:
+        plan = await plan_question(model, body)
+    except Exception as e:
+        # The question can be personal: never log it, only the error type.
+        log.error("insights plan failed: %s", type(e).__name__)
+        raise HTTPException(status_code=502, detail="AI model call failed") from None
+    log.info("insights plan: tool=%s", plan.tool)
+    return PlanResponse(plan=plan, model=model.name)
