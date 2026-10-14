@@ -49,7 +49,7 @@ Without `--env-file` (no key) the service still starts; `/v1/categorise` returns
 }
 ```
 
-→ `{"suggestions":[{"id":"a1","category":"Food & Dining","confidence":"high"}],"model":"gemini-2.5-flash"}`
+→ `{"suggestions":[{"id":"a1","category":"Food & Dining","confidence":"high"}],"model":"gemini-3.5-flash-lite"}`
 
 `category` is `null` when the model didn't know or its answer failed validation.
 Limits: 50 items, 100 categories, 80 characters per name.

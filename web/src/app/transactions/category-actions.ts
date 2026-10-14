@@ -57,12 +57,14 @@ export async function deleteRule(ruleId: string): Promise<{ ok: boolean }> {
   return { ok: deleted > 0 };
 }
 
-export async function aiSuggestCategories(): Promise<
+export async function aiSuggestCategories(acknowledged: boolean): Promise<
   { ok: true; result: AiCategoriseResult } | { ok: false; error: string }
 > {
   const user = await getSessionUser();
   if (!user) return { ok: false, error: "Your session has expired. Please sign in again." };
   if (!aiConfigured()) return { ok: false, error: "AI suggestions aren't set up on this server." };
+  // Consent first: the free-tier model may use inputs, so the user must say so.
+  if (acknowledged !== true) return { ok: false, error: "Please confirm before sending payee names to the AI." };
   const h = await headers();
   // Each click is an external model call: keep it to a few an hour.
   if (!rateLimit(`ai-categorise:${user.id}:${clientIp(h)}`, 10, 60 * 60_000).ok) {

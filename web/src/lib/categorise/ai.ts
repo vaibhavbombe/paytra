@@ -47,7 +47,7 @@ export async function aiCategoriseUncategorised(userId: string, headers: Headers
         userId,
         action: "category.ai_suggest",
         // Counts and model only: no payee names in the audit log.
-        metadata: { model: response.model, payeesSent: plan.items.length, categorised: n, unsure },
+        metadata: { model: response.model, payeesSent: plan.items.length, categorised: n, unsure, mockDataConfirmed: true },
       },
       headers,
     );

@@ -142,12 +142,29 @@ Needs `SETU_*` values in `web/.env.local`.
 Known issue (Oct 2026): Setu's test AA returns "upstream servers are currently down".
 Onemoney's test AA sends a real SMS and works only for numbers Setu has whitelisted.
 
+### 10. AI category suggestions (mock data only)
+
+1. Add mock manual transactions for payees no rule knows, e.g. ₹120 Blinkit, ₹85 Rapido,
+   ₹499 Netflix, ₹350 Apollo Pharmacy, ₹500 Rahul Sharma.
+2. `/transactions` → **Suggest with AI**. Expect a notice saying only payee names and money in/out go
+   to Google Gemini (free tier, mock data only) and a checkbox; **Send to AI** stays disabled until
+   it is ticked.
+3. Tick and send. Expect the businesses categorised with an **AI** tag and the person's name left
+   uncategorised ("left for you").
+4. Change an AI-tagged category. Expect the tag to go and a rule for that payee on `/rules`.
+5. `/settings` → activity log. Expect "Asked AI to suggest categories", with no payee names.
+
+AI service tests: `cd ai; .venv\Scripts\python -m pytest -q` → `23 passed`.
+Measured on 14 Oct 2026 with 8 mock payees on `gemini-3.5-flash-lite`: 1.3–1.9 s per call;
+6 of 8 categorised, the personal name and a prompt-injection payee left uncategorised.
+
 ## Security checks
 
 | Check | How | Expected |
 |---|---|---|
 | Security headers | `curl -I https://paytra-web-983935958947.asia-south1.run.app/login` | HSTS, `X-Frame-Options: DENY`, CSP `frame-ancestors 'none'`, `X-Content-Type-Options: nosniff`, no `X-Powered-By` |
 | Worker is private | `curl https://<worker-url>/health` without a token | 403 |
+| AI service is private | `curl https://paytra-ai-983935958947.asia-south1.run.app/health` | 403 |
 | Pages need a session | open `/budgets` signed out | redirect to `/login` |
 | Upload URL expires | reuse an upload URL after 10+ minutes | rejected by Cloud Storage |
 | No secrets in git | `git grep -nE "npg_\|private_key\|AIza"` | no real values |

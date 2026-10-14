@@ -1,4 +1,4 @@
-# PayTra: build -> push -> migrate -> deploy worker + web to Cloud Run (asia-south1).
+# PayTra: build -> push -> migrate -> deploy worker + AI service + web to Cloud Run (asia-south1).
 #
 # Manual run (from repo root):
 #   gcloud builds submit --config=cloudbuild.yaml \
@@ -12,6 +12,8 @@ substitutions:
   _REGION: asia-south1
   _SERVICE: paytra-web
   _WORKER: paytra-worker
+  _AI: paytra-ai
+  _AI_MODEL: gemini-3.5-flash-lite
   _BUCKET: paytra-66fab-statements
   _REPO: paytra
   _FIREBASE_PROJECT_ID: paytra-66fab
@@ -22,6 +24,7 @@ substitutions:
   _FIREBASE_MESSAGING_SENDER_ID: "983935958947" # = project number (public)
   # Cloud Run's deterministic URL: https://SERVICE-PROJECT_NUMBER.REGION.run.app
   _APP_ORIGIN: https://paytra-web-983935958947.asia-south1.run.app
+  _AI_URL: https://paytra-ai-983935958947.asia-south1.run.app
 
 options:
   logging: CLOUD_LOGGING_ONLY # required with a user-specified service account
@@ -60,6 +63,11 @@ steps:
     dir: web
     args: [build, --target=worker, "--tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_WORKER}:$BUILD_ID", .]
 
+  - id: build-ai
+    name: gcr.io/cloud-builders/docker
+    dir: ai
+    args: [build, "--tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_AI}:$BUILD_ID", .]
+
   # 2. Push the runtime images (the migrate image never leaves the build).
   - id: push
     name: gcr.io/cloud-builders/docker
@@ -68,6 +76,10 @@ steps:
   - id: push-worker
     name: gcr.io/cloud-builders/docker
     args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_WORKER}:$BUILD_ID"]
+
+  - id: push-ai
+    name: gcr.io/cloud-builders/docker
+    args: [push, "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_AI}:$BUILD_ID"]
 
   # 3. Apply pending migrations. If this fails, the deploy below never runs,
   #    so new code can't go live against an old schema.
@@ -100,6 +112,29 @@ steps:
       - --port=8080
       - --no-allow-unauthenticated
 
+  # 4b. Deploy the AI service. Private: only paytra-web has run.invoker, and
+  #     it has no database access. Only its own account can read the Gemini key.
+  - id: deploy-ai
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - ${_AI}
+      - --image=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_AI}:$BUILD_ID
+      - --region=${_REGION}
+      - --service-account=paytra-ai@$PROJECT_ID.iam.gserviceaccount.com
+      - --set-secrets=GEMINI_API_KEY=gemini-api-key:latest
+      - --set-env-vars=GEMINI_MODEL=${_AI_MODEL}
+      - --min-instances=0
+      - --max-instances=1
+      - --memory=512Mi
+      - --cpu=1
+      - --concurrency=10
+      - --timeout=60
+      - --port=8080
+      - --no-allow-unauthenticated
+
   # 5. Deploy the web app.
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
@@ -112,7 +147,7 @@ steps:
       - --region=${_REGION}
       - --service-account=paytra-web@$PROJECT_ID.iam.gserviceaccount.com
       - --set-secrets=DATABASE_URL=database-url:latest
-      - --set-env-vars=FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID},APP_ORIGIN=${_APP_ORIGIN},STATEMENTS_BUCKET=${_BUCKET}
+      - --set-env-vars=FIREBASE_PROJECT_ID=${_FIREBASE_PROJECT_ID},APP_ORIGIN=${_APP_ORIGIN},STATEMENTS_BUCKET=${_BUCKET},AI_SERVICE_URL=${_AI_URL}
       - --min-instances=0 # scale to zero: no cost when idle
       - --max-instances=1 # cost cap (CLAUDE.md: 1-2)
       - --memory=512Mi
