@@ -58,6 +58,7 @@ enum ImportJobStatus {
 enum CategorySource {
   RULE // matched a category rule (built-in or the user's own)
   USER // chosen by the user: never overwritten by rules
+  AI // suggested by the AI service (confident answers only); rules may replace it
 }
 
 enum RuleMatchType {

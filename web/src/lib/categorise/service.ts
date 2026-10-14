@@ -35,13 +35,14 @@ export function ruleCategory(t: Categorisable, rules: Rule[]) {
 
 /**
  * Re-run rules over the user's transactions that rules are allowed to touch:
- * uncategorised ones and ones a rule set earlier. Never those the user chose.
+ * uncategorised ones, ones a rule set earlier, and AI suggestions (a matching
+ * rule wins over the AI). Never those the user chose.
  * Optionally limited to one normalised payee text.
  */
 async function reapply(tx: Tx, userId: string, rules: Rule[], onlyText?: string) {
   const candidates = await tx.transaction.findMany({
-    where: { userId, OR: [{ categorySource: null }, { categorySource: "RULE" }] },
-    select: { id: true, direction: true, merchant: true, description: true, categoryId: true, categoryRuleId: true },
+    where: { userId, OR: [{ categorySource: null }, { categorySource: "RULE" }, { categorySource: "AI" }] },
+    select: { id: true, direction: true, merchant: true, description: true, categoryId: true, categoryRuleId: true, categorySource: true },
   });
 
   // Group by the outcome so each distinct result is one UPDATE.
@@ -49,6 +50,8 @@ async function reapply(tx: Tx, userId: string, rules: Rule[], onlyText?: string)
   for (const t of candidates) {
     if (onlyText !== undefined && matchText(t) !== onlyText) continue;
     const data = ruleCategory(t, rules);
+    // A rule replaces an AI suggestion, but "no rule matches" doesn't clear it.
+    if (t.categorySource === "AI" && !data.categoryId) continue;
     if (data.categoryId === t.categoryId && data.categoryRuleId === t.categoryRuleId) continue; // unchanged
     const key = `${data.categoryId}|${data.categoryRuleId}`;
     const g = groups.get(key) ?? { data, ids: [] };

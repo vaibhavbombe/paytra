@@ -4,11 +4,14 @@ import { refresh } from "next/cache";
 import { headers } from "next/headers";
 import { z } from "zod";
 
+import { AiUnavailable, aiConfigured } from "@/lib/ai/client";
 import { getSessionUser } from "@/lib/auth/session";
+import { aiCategoriseUncategorised, type AiCategoriseResult } from "@/lib/categorise/ai";
 import { recategoriseAll, setTransactionCategory, type SetCategoryResult } from "@/lib/categorise/service";
 import { writeAudit } from "@/lib/audit";
 import { checkBudgetsQuietly } from "@/lib/budgets/service";
 import { db } from "@/lib/db";
+import { clientIp, rateLimit } from "@/lib/security/rate-limit";
 
 const SetCategoryInput = z.object({
   transactionId: z.uuid(),
@@ -52,4 +55,28 @@ export async function deleteRule(ruleId: string): Promise<{ ok: boolean }> {
   });
   if (deleted) refresh();
   return { ok: deleted > 0 };
+}
+
+export async function aiSuggestCategories(): Promise<
+  { ok: true; result: AiCategoriseResult } | { ok: false; error: string }
+> {
+  const user = await getSessionUser();
+  if (!user) return { ok: false, error: "Your session has expired. Please sign in again." };
+  if (!aiConfigured()) return { ok: false, error: "AI suggestions aren't set up on this server." };
+  const h = await headers();
+  // Each click is an external model call: keep it to a few an hour.
+  if (!rateLimit(`ai-categorise:${user.id}:${clientIp(h)}`, 10, 60 * 60_000).ok) {
+    return { ok: false, error: "Too many AI requests. Try again later." };
+  }
+  try {
+    const result = await aiCategoriseUncategorised(user.id, h);
+    if (result.categorised) {
+      await checkBudgetsQuietly(user.id);
+      refresh();
+    }
+    return { ok: true, result };
+  } catch (e) {
+    if (e instanceof AiUnavailable) return { ok: false, error: "The AI service isn't available right now. Rules still work." };
+    throw e;
+  }
 }
