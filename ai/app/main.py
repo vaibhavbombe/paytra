@@ -17,7 +17,7 @@ from .schemas import CategoriseRequest, CategoriseResponse
 log = logging.getLogger("paytra.ai")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
 
-DEFAULT_MODEL = "gemini-2.5-flash"
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 
 
 def model_from_env() -> Model | None:
